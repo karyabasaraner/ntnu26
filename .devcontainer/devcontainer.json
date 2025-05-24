@@ -1,0 +1,51 @@
+{
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "."
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "GitHub.copilot",
+                "llvm-vs-code-extensions.vscode-clangd",
+                "ms-vscode.cmake-tools"
+            ],
+            "settings": {
+                "files.hotExit": "off",
+                "window.restoreWindows": "none",
+                "workbench.startupEditor": "none"
+            }
+        }
+    },
+    "remoteEnv": {
+        "DISPLAY": "${localEnv:DISPLAY}"
+    },
+    "remoteUser": "ubuntu",
+    "initializeCommand": ".devcontainer/optional_mounts.sh",
+    "postCreateCommand": "",
+    "postStartCommand": "",
+    "mounts": [
+        {
+            "source": "${localEnv:HOME}/.bash-git-prompt",
+            "target": "/home/ubuntu/.bash-git-prompt",
+            "type": "bind"
+        },
+        {
+            "source": "${localEnv:HOME}/Downloads",
+            "target": "/home/ubuntu/Downloads",
+            "type": "bind"
+        }
+    ],
+    "runArgs": [
+        "--gpus",
+        "all",
+        "--privileged",
+        "--device=/dev/dri:/dev/dri",
+        "-v",
+        "/tmp/.X11-unix:/tmp/.X11-unix",
+        "-v",
+        "/dev/bus/usb:/dev/bus/usb",
+        "--net=host",
+        "--shm-size=16g"
+    ]
+}
