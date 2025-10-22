@@ -33,3 +33,9 @@
 
 # Core custom ignores
 build/*
+
+# Core python ignores
+**/__pycache__/
+**/*.pyc
+**/*.egg-info 
+venv

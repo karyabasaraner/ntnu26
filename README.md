@@ -1,13 +1,19 @@
 # core
+core is a vision perception stack used at the NTNU FRL.
 
-Core is the perception stack for the Field Robotics Lab at MTP, NTNU.
+## coordinate convention
+The stack utilizes passive transformations all throughout the code.
+The nomenclature is $\Phi_{\mathcal{A}\mathcal{B}}$ or in code `phi_A_B`, which is a passive transformation from frame $\mathcal{B}$ to frame $\mathcal{A}$.
+It is worth to note that different notations exists (e.g. see [1]), but the advantage of this formulation is that it is very intuitive,
+$$\Phi_{\mathcal{A}\mathcal{C}} = \Phi_{\mathcal{A}\mathcal{B}}\Phi_{\mathcal{B}\mathcal{C}}$$
+since the $\mathcal{B}$ cancels out.
+Therefore we stick to this formulation.
+![coordinate_conventions](docs/coordinate_conventions.svg)
+Quaternions or rotation matrices are preferred; use of Euler angles should be motivated carefully and are rarely the best choice.
 
-## Development Environment:
-The intended development environment is using [Visual Studio Code](https://code.visualstudio.com/) [devcontainers](https://code.visualstudio.com/docs/devcontainers/containers).
+### quaternions
+We use the Hamilton [1] convention and denote $q_0\in\mathbb{R}$ as the real part, and $\mathbf{q}\in\mathbb{R}^3$. Following [2], we denote the transformation then as $\Phi = \left(q,\mathbf{q}\right)$.
 
-The minimum requirements are having docker installed, be careful to follow the complete [installation guide](https://docs.docker.com/engine/install/) and the [Nvidia container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-
-Once these requirements are install, clone this repository, open in VScode and select "Reopen in Container".
-
-The recommended (and supported) system is Ubuntu (24.04) with a Nvidia GPU. Other Ubuntu version or Linux distribution should work with no issues.
-If you are on Windows, we wish you all the best luck; consider using devcontainers in WSL, but the challenge probably lies in access to the GPU.
+## References
+[1] Bloesch, M., Sommer, H., Laidlow, T., Burri, M., Nuetzi, G., Fankhauser, P., Bellicoso, D., Gehring, C., Leutenegger, S., Hutter, M., & Siegwart, R. (2016). A Primer on the Differential Calculus of 3D Orientations. https://arxiv.org/abs/1606.05285
+[2] W. R. Hamilton, “On quaternions; or on a new system of imaginaries in algebra,” The London, Edinburgh, and Dublin Philosophical Magazine and Journal of Science, vol. 25, no. 163, pp. 10–13, 1844

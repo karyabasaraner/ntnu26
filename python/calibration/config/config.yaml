@@ -1,0 +1,9 @@
+cameras:
+  - name: cam0
+  - name: cam1
+  - name: cam2
+  - name: cam3
+ref_camera: cam0
+tag_size_m: 0.09
+data_root: /home/marco/Downloads/core_calib_sim
+initial_min_reproj_error: 5.0
