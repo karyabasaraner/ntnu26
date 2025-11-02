@@ -12,7 +12,7 @@ Therefore we stick to this formulation.
 Quaternions or rotation matrices are preferred; use of Euler angles should be motivated carefully and are rarely the best choice.
 
 ### quaternions
-We use the Hamilton [1] convention and denote $q_0\in\mathbb{R}$ as the real part, and $\mathbf{q}\in\mathbb{R}^3$. Following [2], we denote the transformation then as $\Phi = \left(q,\mathbf{q}\right)$.
+We use the Hamilton [2] convention and denote $q_0\in\mathbb{R}$ as the real part, and $\mathbf{q}\in\mathbb{R}^3$. Following [1], we denote the transformation then as $\Phi = \left(q_0,\mathbf{q}\right)$.
 
 ## References
 [1] Bloesch, M., Sommer, H., Laidlow, T., Burri, M., Nuetzi, G., Fankhauser, P., Bellicoso, D., Gehring, C., Leutenegger, S., Hutter, M., & Siegwart, R. (2016). A Primer on the Differential Calculus of 3D Orientations. https://arxiv.org/abs/1606.05285
