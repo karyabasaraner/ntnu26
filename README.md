@@ -3,6 +3,7 @@ core is a vision perception stack used at the NTNU FRL.
 
 ## coordinate convention
 The stack utilizes passive transformations all throughout the code.
+A passive transformation represents a change in frame of reference of e.g. a point, compared to an active transformation, that represent a change of the pose of the point itself.
 The nomenclature is $\Phi_{\mathcal{A}\mathcal{B}}$ or in code `phi_A_B`, which is a passive transformation from frame $\mathcal{B}$ to frame $\mathcal{A}$.
 It is worth to note that different notations exists (e.g. see [1]), but the advantage of this formulation is that it is very intuitive,
 $$\Phi_{\mathcal{A}\mathcal{C}} = \Phi_{\mathcal{A}\mathcal{B}}\Phi_{\mathcal{B}\mathcal{C}}$$
