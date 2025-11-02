@@ -12,6 +12,11 @@ Therefore we stick to this formulation.
 ![coordinate_conventions](docs/coordinate_conventions.svg)
 Quaternions or rotation matrices are preferred; use of Euler angles should be motivated carefully and are rarely the best choice.
 
+### On the representation of poses and transformations
+As a concrete example and reminder of this convention, let's consider two poses in frames $\mathcal{A}$, $\mathcal{B}$ in inertial frame $\mathcal{I}$, $_\mathcal{I}\Phi_{\mathcal{A}}$, $_\mathcal{I}\Phi_{\mathcal{B}}$.
+This is equivalent to writing it as transformations $\Phi_{\mathcal{I}\mathcal{A}}$, $\Phi_{\mathcal{I}\mathcal{B}}$, since in order to obtain the transformation from frame $\mathcal{A}$ to frame $\mathcal{B}$, we can use the following relation:
+$$\Phi_{\mathcal{A}\mathcal{B}} = \Phi_{\mathcal{I}\mathcal{A}}^{-1}\Phi_{\mathcal{I}\mathcal{B}}$$
+
 ### quaternions
 We use the Hamilton [2] convention and denote $q_0\in\mathbb{R}$ as the real part, and $\mathbf{q}\in\mathbb{R}^3$. Following [1], we denote the transformation then as $\Phi = \left(q_0,\mathbf{q}\right)$.
 
