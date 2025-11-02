@@ -14,7 +14,7 @@ Quaternions or rotation matrices are preferred; use of Euler angles should be mo
 
 ### On the representation of poses and transformations
 As a concrete example and reminder of this convention, let's consider two poses $\mathcal{A}$, $\mathcal{B}$ in inertial frame $\mathcal{I}$, ${}\_\mathcal{I}\Phi_{\mathcal{A}}$, ${}\_\mathcal{I}\Phi_{\mathcal{B}}$.
-This is equivalent to writing it as transformations $\Phi_{\mathcal{I}\mathcal{A}}$, $\Phi_{\mathcal{I}\mathcal{B}}$, since in order to obtain the transformation from frame $\mathcal{A}$ to frame $\mathcal{B}$, we can use the following relation:
+This is equivalent to writing it as transformations $\Phi_{\mathcal{I}\mathcal{A}}$, $\Phi_{\mathcal{I}\mathcal{B}}$, since in order to obtain the transformation from frame $\mathcal{B}$ to frame $\mathcal{A}$, we can use the following relation:
 $$\Phi_{\mathcal{A}\mathcal{B}} = \Phi_{\mathcal{I}\mathcal{A}}^{-1}\Phi_{\mathcal{I}\mathcal{B}}$$
 
 ### quaternions
