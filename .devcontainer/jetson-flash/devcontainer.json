@@ -1,0 +1,53 @@
+{
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "."
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "GitHub.copilot",
+                "llvm-vs-code-extensions.vscode-clangd",
+                "ms-vscode.cmake-tools"
+            ],
+            "settings": {
+                "files.hotExit": "off",
+                "window.restoreWindows": "none",
+                "workbench.startupEditor": "none"
+            }
+        }
+    },
+    "remoteUser": "ubuntu",
+    "initializeCommand": ".devcontainer/optional_mounts.sh",
+    "postCreateCommand": "bash .devcontainer/jetson-flash/init_top_dir.sh",
+    "postStartCommand": "",
+    "mounts": [
+        {
+            "source": "${localEnv:HOME}/.bash-git-prompt",
+            "target": "/home/ubuntu/.bash-git-prompt",
+            "type": "bind"
+        },
+        {
+            "source": "${localEnv:HOME}/Downloads",
+            "target": "/home/ubuntu/Downloads",
+            "type": "bind"
+        },
+        {
+            "source": "/lib/modules",
+            "target": "/lib/modules",
+            "type": "bind",
+            "readOnly": true
+        }
+    ],
+    "runArgs": [
+        "--privileged",
+        "--device=/dev/bus/usb:/dev/bus/usb",
+        "--device=/dev/loop-control",
+        "--device=/dev/loop0",
+        "--device=/dev/loop1",
+        "--device=/dev/loop2",
+        "--device=/dev/loop3",
+        "--net=host",
+        "--shm-size=8g"
+    ]
+}
