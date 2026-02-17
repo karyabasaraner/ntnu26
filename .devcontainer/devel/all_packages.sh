@@ -5,11 +5,15 @@ export DEBIAN_FRONTEND=noninteractive
 
 main() {
     local pkgs=(
+        ccache
         clang-format
         clang-tidy-18
         clangd
         cmake
         gdb
+        libboost-dev
+        libboost-filesystem-dev
+        libboost-system-dev
         libeigen3-dev
     )
 

@@ -1,14 +1,12 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
             "name": "Debug current test",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/${relativeFileDirname}/${fileBasenameNoExtension}",
+            "program": "${workspaceFolder}/build/tests/${fileBasenameNoExtension}",
+            "preLaunchTask": "Build current test", // added
             "MIMode": "gdb",
             "cwd": "${workspaceFolder}",
             "setupCommands": [
