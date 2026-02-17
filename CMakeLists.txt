@@ -17,11 +17,14 @@ endif()
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
 
+# Third-party dependencies
+include(${CMAKE_SOURCE_DIR}/cmake/third_party.cmake)
+
 # Core/modules
-add_subdirectory(core/modules/test_module)
+add_subdirectory(core/utils)
+add_subdirectory(core/modules/camera)
 
 # Testing Setup
-option(ENABLE_TESTING "Build tests" OFF)
 if(ENABLE_TESTING)
     message(STATUS "Testing enabled")
     include(${CMAKE_SOURCE_DIR}/cmake/testing.cmake)

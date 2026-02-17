@@ -1,0 +1,3 @@
+add_library(core_utils_configs STATIC configs.cpp)
+target_include_directories(core_utils_configs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(core_utils_configs PUBLIC config_utilities::config_utilities)
