@@ -1,6 +1,3 @@
 [submodule "config_utilities"]
 	path = third-party/config_utilities
 	url = git@github.com:marcojob/config_utilities.git
-[submodule "third-party/yaml-cpp"]
-	path = third-party/yaml-cpp
-	url = git@github.com:marcojob/yaml-cpp.git
