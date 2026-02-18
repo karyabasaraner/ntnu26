@@ -2,6 +2,7 @@
 #define WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_MODULE_HPP
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -21,7 +22,7 @@ public:
 
 private:
     Config _config;
-    std::vector<Camera> _cameras;
+    std::vector<std::unique_ptr<Camera>> _cameras;
 
     void _initialize_cameras();
 };

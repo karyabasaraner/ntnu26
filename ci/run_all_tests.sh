@@ -6,7 +6,6 @@ set -e
 
 # Setup mock cameras in the background
 ./ci/mock_cameras.sh &
-echo $(ls /dev/video*)
 MOCK_PID=$!
 
 # Configure and build with testing enabled

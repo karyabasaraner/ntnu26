@@ -18,6 +18,8 @@ main() {
         libboost-system-dev
         libeigen3-dev
         libgtest-dev
+        v4l-utils
+        jq
     )
 
     apt-get update

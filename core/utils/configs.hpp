@@ -7,12 +7,12 @@
 namespace core {
 
 struct CameraConfig {
-    std::string name;
-    std::string device;
-    int width;
-    int height;
     int fps;
-
+    int height;
+    int width;
+    std::string device;
+    std::string format;
+    std::string name;
 };
 
 struct RootConfig {

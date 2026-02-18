@@ -3,6 +3,7 @@
 #include "configs.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace core {
@@ -22,7 +23,7 @@ void CameraModule::_initialize_cameras() {
     for (const CameraConfig& cam_config : _config.get_config().cameras) {
         Camera const camera(cam_config);
         if (camera.is_valid()) {
-            _cameras.push_back(camera);
+            _cameras.push_back(std::make_unique<Camera>(cam_config));
         }
     }
 }

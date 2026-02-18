@@ -17,7 +17,7 @@ ENV LANG="en_US.UTF-8" \
     LC_ALL="en_US.UTF-8"
 
 # Add user with sudo rights
-RUN usermod -u ${USER_UID} -aG dialout,plugdev,sudo ${USERNAME} && \
+RUN usermod -u ${USER_UID} -aG dialout,plugdev,video,sudo ${USERNAME} && \
     mkdir -p /etc/sudoers.d && \
     echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME}
 

@@ -19,7 +19,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM EXIT
 
 # Create 4 virtual video devices (video0, video1, video2, video3)
-sudo modprobe v4l2loopback video_nr=0,1,2,3
+sudo modprobe v4l2loopback video_nr=0,1,2,3 exclusive_caps=1
 
 # Wait a moment for devices to be created
 sleep 1

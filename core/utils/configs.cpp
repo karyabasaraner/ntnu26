@@ -9,11 +9,12 @@ namespace core {
 
 void declare_config(CameraConfig& config) {
     config::name("CameraConfig");
-    config::field(config.name, "name", "Name of the camera");
     config::field(config.device, "device", "Device path of the camera");
-    config::field(config.width, "width", "Image width in pixels");
-    config::field(config.height, "height", "Image height in pixels");
+    config::field(config.format, "format", "Pixel format (e.g., RGB24)");
     config::field(config.fps, "fps", "Frames per second");
+    config::field(config.height, "height", "Image height in pixels");
+    config::field(config.name, "name", "Name of the camera");
+    config::field(config.width, "width", "Image width in pixels");
 }
 
 void declare_config(RootConfig& config) {
