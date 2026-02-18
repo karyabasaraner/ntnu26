@@ -6,7 +6,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/tests/${fileBasenameNoExtension}",
-            "preLaunchTask": "Build current test", // added
+            "preLaunchTask": "Build current test",
             "MIMode": "gdb",
             "cwd": "${workspaceFolder}",
             "setupCommands": [

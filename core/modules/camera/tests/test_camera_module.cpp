@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
+#include <string>
 
 #include "../camera_module.hpp"
 
-TEST(CameraModuleTest, LoadConfig) {
-    const std::string config_path = "configs/core-0.yaml";
-    core::CameraModule camera_module(config_path);
-
-    // TODO(MJ): Expand this test to check that the config is loaded correctly and that cameras are initialized as expected.
+TEST(CameraModuleTest, InitializeCameras) {
+    const std::string config_path = "ci/configs/four-cameras.yaml";
+    const core::CameraModule camera_module(config_path);
+    EXPECT_EQ(camera_module.get_num_cameras(), 4);
 }

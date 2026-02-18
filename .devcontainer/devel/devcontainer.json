@@ -8,8 +8,7 @@
             "extensions": [
                 "GitHub.copilot",
                 "llvm-vs-code-extensions.vscode-clangd",
-                "ms-vscode.cmake-tools",
-                "ms-vscode.cpptools"
+                "ms-vscode.cmake-tools"
             ],
             "settings": {
                 "files.hotExit": "off",
@@ -41,12 +40,14 @@
         "--gpus",
         "all",
         "--privileged",
+        "--shm-size=16g",
         "--device=/dev/dri:/dev/dri",
+        "--device=/dev:/dev",
         "-v",
         "/tmp/.X11-unix:/tmp/.X11-unix",
         "-v",
-        "/dev/bus/usb:/dev/bus/usb",
-        "--net=host",
-        "--shm-size=16g"
+        "/lib/modules:/lib/modules",
+        "-v",
+        "/dev:/dev"
     ]
 }

@@ -1,9 +1,12 @@
-#ifndef CAMERA_MODULE_HPP
-#define CAMERA_MODULE_HPP
+#ifndef WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_MODULE_HPP
+#define WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_MODULE_HPP
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "../utils/configs.hpp"
+#include "camera.hpp"
 
 namespace core {
 
@@ -12,10 +15,15 @@ class CameraModule {
     Camera module reads config, initializes cameras.
 */
 public:
-    explicit CameraModule(std::string config_path);
+    explicit CameraModule(const std::string& config_path);
+
+    uint8_t get_num_cameras() const;
 
 private:
     Config _config;
+    std::vector<Camera> _cameras;
+
+    void _initialize_cameras();
 };
 
 } // namespace core

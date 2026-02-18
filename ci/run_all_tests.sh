@@ -4,6 +4,11 @@ set -e
 # Clean the build directory
 # rm -rf build
 
+# Setup mock cameras in the background
+./ci/mock_cameras.sh &
+echo $(ls /dev/video*)
+MOCK_PID=$!
+
 # Configure and build with testing enabled
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=ON
 cmake --build build
@@ -20,5 +25,8 @@ done < <(
         ! -path '*/config_utilities/*' \
         ! -path '*/config_utilities-*/*'
 )
+
+# Kill mock cameras process on exit
+trap "kill $MOCK_PID" EXIT
 
 exit $err

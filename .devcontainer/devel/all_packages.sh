@@ -10,11 +10,14 @@ main() {
         clang-tidy-18
         clangd
         cmake
+        ffmpeg
         gdb
+        kmod
         libboost-dev
         libboost-filesystem-dev
         libboost-system-dev
         libeigen3-dev
+        libgtest-dev
     )
 
     apt-get update

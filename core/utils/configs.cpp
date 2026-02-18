@@ -1,6 +1,7 @@
 #include <config_utilities/config.h>
 #include <config_utilities/parsing/yaml.h>
 #include <iostream>
+#include <string>
 
 #include "configs.hpp"
 
@@ -20,9 +21,13 @@ void declare_config(RootConfig& config) {
     config::field(config.cameras, "cameras", "List of camera configurations");
 }
 
-void Config::load(std::string& config_path) {
+void Config::load(const std::string& config_path) {
     _config = config::fromYamlFile<RootConfig>(config_path);
-    std::cout << "Config loaded from: " << config_path << std::endl;
+    std::cout << "Config loaded from: " << config_path << '\n';
+}
+
+const RootConfig& Config::get_config() {
+    return _config;
 }
 
 } // namespace core
