@@ -25,7 +25,7 @@ if [[ -z "${1-}" ]]; then
       sink_1::xpos=$WIDTH sink_1::ypos=0 \
       sink_2::xpos=0    sink_2::ypos=$HEIGHT \
       sink_3::xpos=$WIDTH sink_3::ypos=$HEIGHT \
-    ! videoconvert ! autovideosink \
+    ! videoconvert ! xvimagesink \
     v4l2src device=/dev/video0 ! videoconvert ! "$caps" ! comp.sink_0 \
     v4l2src device=/dev/video1 ! videoconvert ! "$caps" ! comp.sink_1 \
     v4l2src device=/dev/video2 ! videoconvert ! "$caps" ! comp.sink_2 \
@@ -47,4 +47,4 @@ if [[ ! -e "$dev" ]]; then
   exit 3
 fi
 
-exec gst-launch-1.0 v4l2src device="$dev" ! videoconvert ! "$caps" ! videoconvert ! autovideosink
+exec gst-launch-1.0 v4l2src device="$dev" ! videoconvert ! "$caps" ! videoconvert ! xvimagesink
