@@ -8,7 +8,8 @@
             "extensions": [
                 "GitHub.copilot",
                 "llvm-vs-code-extensions.vscode-clangd",
-                "ms-vscode.cmake-tools"
+                "ms-vscode.cmake-tools",
+                "ms-vscode.cpptools"
             ],
             "settings": {
                 "files.hotExit": "off",
@@ -21,7 +22,7 @@
         "DISPLAY": "${localEnv:DISPLAY}"
     },
     "remoteUser": "ubuntu",
-    "initializeCommand": ".devcontainer/optional_mounts.sh",
+    "initializeCommand": ".devcontainer/devel/optional_mounts.sh",
     "postCreateCommand": "",
     "postStartCommand": "",
     "mounts": [

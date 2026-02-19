@@ -1,7 +1,21 @@
 # core
 core is a vision perception stack used at the NTNU FRL.
 
-## coordinate convention
+## Building
+Release build:
+```
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+```
+or debug build:
+```
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+```
+and then build with:
+```
+cmake --build build
+```
+
+## Coordinate convention
 The stack utilizes passive transformations all throughout the code.
 A passive transformation represents a change in frame of reference of e.g. a point, compared to an active transformation, that represent a change of the pose of the point itself.
 The nomenclature is $\Phi_{\mathcal{A}\mathcal{B}}$ or in code `phi_A_B`, which is a passive transformation from frame $\mathcal{B}$ to frame $\mathcal{A}$.
@@ -17,7 +31,7 @@ As a concrete example and reminder of this convention, let's consider two poses 
 This is equivalent to writing it as transformations $\Phi_{\mathcal{I}\mathcal{A}}$, $\Phi_{\mathcal{I}\mathcal{B}}$, since in order to obtain the transformation from frame $\mathcal{B}$ to frame $\mathcal{A}$, we can use the following relation:
 $$\Phi_{\mathcal{A}\mathcal{B}} = \Phi_{\mathcal{I}\mathcal{A}}^{-1}\Phi_{\mathcal{I}\mathcal{B}}$$
 
-### quaternions
+### Quaternions
 We use the Hamilton [2] convention and denote $q_0\in\mathbb{R}$ as the real part, and $\mathbf{q}\in\mathbb{R}^3$. Following [1], we denote the transformation then as $\Phi = \left(q_0,\mathbf{q}\right)$.
 
 ### References

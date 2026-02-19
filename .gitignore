@@ -42,3 +42,6 @@ venv
 
 # jetson_flash ignores
 hardware/jetson-flash/*
+
+# clang-tidy fixes
+clang-tidy-fixes.yaml

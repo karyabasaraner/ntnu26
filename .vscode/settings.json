@@ -1,9 +1,18 @@
 {
     "editor.fontFamily": "'Ubuntu Mono', monospace",
+    "terminal.integrated.scrollback": 1000000,
     "cmake.buildDirectory": "${workspaceFolder}/build",
     "clangd.arguments": [
         "-background-index",
         "-compile-commands-dir=build"
     ],
-    "cmake.sourceDirectory": "/workspaces/core",
+    "cmake.sourceDirectory": "/home/marco/Repositories/core",
+    "C_Cpp.clang_format_style": "file",
+    "files.associations": {
+        "deque": "cpp",
+        "vector": "cpp",
+        "chrono": "cpp",
+        "functional": "cpp",
+        "core": "cpp"
+    }
 }

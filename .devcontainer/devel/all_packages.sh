@@ -5,8 +5,12 @@ export DEBIAN_FRONTEND=noninteractive
 
 main() {
     local pkgs=(
+        clang-format
+        clang-tidy-18
         clangd
         cmake
+        gdb
+        libeigen3-dev
     )
 
     apt-get update

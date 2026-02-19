@@ -1,0 +1,24 @@
+Checks: '*,
+         -altera*,
+         -bugprone-easily-swappable-parameters,
+         -cppcoreguidelines-avoid-magic-numbers,
+         -fuchsia*,
+         -hicpp-uppercase-literal-suffix,
+         -llvmlibc-callee-namespace,
+         -llvmlibc-implementation-in-namespace,
+         -llvmlibc-inline-function-decl,
+         -llvmlibc-restrict-system-libc-headers,
+         -modernize-use-nodiscard,
+         -modernize-use-trailing-return-type,
+         -readability-magic-numbers,
+         -readability-uppercase-literal-suffix
+        '
+WarningsAsErrors: ''
+
+CheckOptions:
+  - key: misc-include-cleaner.IgnoreHeaders
+    value: 'Eigen/.*;eigen3/Eigen/.*'
+
+# TODO:
+# - Debating modernize-use-nodiscard and modernize-use-trailing-return-type
+# - misc-include-cleaner, would be nice to have it, but doesn't work with eigen?
