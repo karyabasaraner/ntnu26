@@ -19,6 +19,7 @@ public:
     explicit CameraModule(const std::string& config_path);
 
     uint8_t get_num_cameras() const;
+    void stop_cameras(size_t index = -1);
 
 private:
     Config _config;

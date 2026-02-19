@@ -23,6 +23,7 @@ main() {
         libeigen3-dev
         libgstreamer-plugins-base1.0-dev
         libgtest-dev
+        libspdlog-dev
         v4l-utils
     )
 

@@ -17,6 +17,9 @@ endif()
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
 
+# Required dependencies
+find_package(spdlog REQUIRED)
+
 # Third-party dependencies
 include(${CMAKE_SOURCE_DIR}/cmake/third_party.cmake)
 

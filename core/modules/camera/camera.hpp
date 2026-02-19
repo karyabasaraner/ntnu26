@@ -43,8 +43,7 @@ private:
     };
     std::vector<Buffer> _buffers;
 
-    
-
+    bool _close_device();
     bool _configure() const;
     bool _init_mmap();
     bool _open_device();

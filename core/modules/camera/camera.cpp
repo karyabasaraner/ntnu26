@@ -6,9 +6,9 @@
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
-#include <iostream>
 #include <linux/videodev2.h>
 #include <poll.h>
+#include <spdlog/spdlog.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/poll.h>
@@ -18,9 +18,9 @@
 
 namespace core {
 
-// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
+// NOLINTNEXTLINE(clang-diagnostic-global-constructors, cert-err58-cpp)
 const std::unordered_map<std::string, uint32_t> Camera::FOURCC_FORMATS = {
-    {"RGB24", V4L2_PIX_FMT_RGB24}
+    {"YUVY", V4L2_PIX_FMT_YUYV}
 };
 
 Camera::Camera(CameraConfig config) : _config(std::move(config)) {
@@ -38,20 +38,15 @@ Camera::Camera(CameraConfig config) : _config(std::move(config)) {
 }
 
 Camera::~Camera() {
+    // NOTE: This closes the device and stops the capture thread if still running
     stop();
-    if (is_valid()) {
-        for (const auto buffer : _buffers) {
-            munmap(buffer.start, buffer.length);
-        }
-        close(_file_desc);
-    }
 }
 
 bool Camera::start() {
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
     if (ioctl(_file_desc, VIDIOC_STREAMON, &type) < 0) {
-        std::cout << "Start streaming " << _config.device << ", " << errno << '\n';
+        spdlog::warn("Failed to start streaming: {}, {}", _config.device, errno);
         return false;
     }
 
@@ -61,30 +56,61 @@ bool Camera::start() {
 }
 
 void Camera::stop() {
+    spdlog::info("Stopping camera: {}", _config.device);
     _running = false;
     if (_worker.joinable()) {
         _worker.join();
     }
+    spdlog::info("Stopped capture thread for camera: {}", _config.device);
 
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
     if (ioctl(_file_desc, VIDIOC_STREAMOFF, &type) < 0) {
-        std::cout << "Stop streaming for device: " << _config.device << ", " << errno << '\n';
+        spdlog::warn("Failed to stop streaming for device: {}, {}", _config.device, errno);
+    }
+    spdlog::info("Stopped streaming for camera: {}", _config.device);
+
+    if (is_valid()) {
+        for (const auto buffer : _buffers) {
+            munmap(buffer.start, buffer.length);
+        }
+        _close_device();
     }
 }
 
 
 bool Camera::_open_device() {
+    if (is_valid()) {
+        spdlog::info("Camera already open: {}", _config.device);
+        return true;
+    }
+
     if (!std::filesystem::exists(_config.device)) {
-        std::cout << "Camera device does not exist: " << _config.device << '\n';
+        spdlog::warn("Camera device does not exist: {}", _config.device);
         return false;
     }
 
     _file_desc = open(_config.device.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC, 0);
     if (_file_desc < 0) {
-        std::cout << "Open camera device: " << _config.device << ", " << errno << '\n';
+        spdlog::warn("Failed to open camera device: {}, {}", _config.device, errno);
         return false;
     }
+    spdlog::info("Opened camera device: {}", _config.device);
+    return true;
+}
+
+bool Camera::_close_device() {
+    if (!is_valid()) {
+        spdlog::info("Camera device already closed: {}", _config.device);
+        return true;
+    }
+
+    if (close(_file_desc) < 0) {
+        spdlog::warn("Failed to close camera device: {}, {}", _config.device, errno);
+        return false;
+    }
+    _file_desc = -1;
+    spdlog::info("Closed camera device: {}", _config.device);
     return true;
 }
 
@@ -101,9 +127,10 @@ bool Camera::_configure() const {
 
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
     if (ioctl(_file_desc, VIDIOC_S_FMT, &fmt) < 0) {
-        std::cerr << "Set format: " << _config.device << ", " << errno << "\n";
+        spdlog::warn("Failed to set format for device: {}, {}", _config.device, errno);
         return false;
     }
+    spdlog::info("Configured camera device: {}", _config.device);
     return true;
 }
 
@@ -115,12 +142,12 @@ bool Camera::_init_mmap() {
 
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
     if (ioctl(_file_desc, VIDIOC_REQBUFS, &req) < 0) {
-        std::cerr << "Request buffers " << _config.device << ", " << errno << "\n";
+        spdlog::warn("Failed to request buffers for device: {}, {}", _config.device, errno);
         return false;
     }
 
     _buffers.resize(req.count);
-    for (size_t index = 0; index < REQ_BUFFER_COUNT; ++index) {
+    for (size_t index = 0; index < req.count; ++index) {
         struct v4l2_buffer buf{};
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_MMAP;
@@ -128,7 +155,7 @@ bool Camera::_init_mmap() {
 
         // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
         if (ioctl(_file_desc, VIDIOC_QUERYBUF, &buf) < 0) {
-            std::cerr << "Query buffer " << _config.device << ", " << errno << "\n";
+            spdlog::warn("Failed to query buffer for device: {}, {}", _config.device, errno);
             return false;
         }
 
@@ -146,7 +173,7 @@ bool Camera::_init_mmap() {
         // Queue buffer for capture
         // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
         if (ioctl(_file_desc, VIDIOC_QBUF, &buf) < 0) {
-            std::cerr << "Queue buffer " << _config.device << ", " << errno << "\n";
+            spdlog::warn("Failed to queue buffer for device: {}, {}", _config.device, errno);
             return false;
         }
     }
@@ -163,7 +190,7 @@ void Camera::_capture_loop() {
         // TODO(MJ): Timeout?
         int const ret = poll(&pfd, 1, -1);
         if (ret < 0) {
-            std::cout << "Poll error for device: " << _config.device << ", " << errno << '\n';
+            spdlog::warn("Poll error for device: {}, {}", _config.device, errno);
             break;
         }
 
@@ -177,18 +204,18 @@ void Camera::_capture_loop() {
 
             // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
             if (ioctl(_file_desc, VIDIOC_QBUF, &buf) < 0) {
-                std::cout << "Re-queue buffer " << _config.device << ", " << errno << '\n';
+                spdlog::warn("Failed to re-queue buffer for device: {}, {}", _config.device, errno);
                 break;
             }
         } else {
-            std::cout << "Dequeue buffer " << _config.device << ", " << errno << '\n';
+            spdlog::warn("Failed to dequeue buffer for device: {}, {}", _config.device, errno);
             break;
         }
     }
 }
 
 void Camera::_process_frame(void* data, size_t length) const {
-    std::cout << "Received frame of length: " << length << " from device: " << _config.device << '\n';
+    spdlog::info("Received frame of length: {} from device: {}", length, _config.device);
     data = data; // TODO(MJ): Process frame data here
 }
 

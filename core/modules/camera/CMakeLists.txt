@@ -5,6 +5,7 @@ add_library(camera_module SHARED camera_module.cpp camera.cpp)
 target_include_directories(camera_module PUBLIC ${CMAKE_SOURCE_DIR}/core/utils)
 
 target_link_libraries(camera_module PUBLIC core_utils_configs)
+target_link_libraries(camera_module PUBLIC spdlog::spdlog)
 target_compile_options(core_utils_configs PRIVATE -fPIC) # TODO: WHy is this needed?
 
 if(ENABLE_TESTING)

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <spdlog/spdlog.h>
 #include <string>
 
 namespace core {
@@ -19,12 +20,20 @@ uint8_t CameraModule::get_num_cameras() const {
     return static_cast<uint8_t>(_cameras.size());
 }
 
+void CameraModule::stop_cameras(size_t index) {
+    if (index > 0 && index < _cameras.size()) {
+        _cameras[index]->stop();
+    } else {
+        for (const auto& camera : _cameras) {
+            camera->stop();
+        }
+    }
+}
+
 void CameraModule::_initialize_cameras() {
     for (const CameraConfig& cam_config : _config.get_config().cameras) {
-        Camera const camera(cam_config);
-        if (camera.is_valid()) {
-            _cameras.push_back(std::make_unique<Camera>(cam_config));
-        }
+        spdlog::info("Initializing camera: {}", cam_config.device);
+        _cameras.push_back(std::make_unique<Camera>(cam_config));
     }
 }
 
