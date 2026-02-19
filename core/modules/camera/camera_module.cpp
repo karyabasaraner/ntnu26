@@ -20,6 +20,26 @@ uint8_t CameraModule::get_num_cameras() const {
     return static_cast<uint8_t>(_cameras.size());
 }
 
+uint8_t CameraModule::get_running_cameras() const {
+    uint8_t count = 0;
+    for (const auto& camera : _cameras) {
+        if (camera->is_valid() && camera->is_running()) {
+            count++;
+        }
+    }
+    return count;
+}
+
+void CameraModule::start_cameras(size_t index) {
+    if (index > 0 && index < _cameras.size()) {
+        _cameras[index]->start();
+    } else {
+        for (const auto& camera : _cameras) {
+            camera->start();
+        }
+    }
+}
+
 void CameraModule::stop_cameras(size_t index) {
     if (index > 0 && index < _cameras.size()) {
         _cameras[index]->stop();

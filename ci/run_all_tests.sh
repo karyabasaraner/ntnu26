@@ -4,6 +4,9 @@ set -e
 # Clean the build directory
 # rm -rf build
 
+# Mock the cameras required for all testing
+sudo modprobe vivid n_devs=4 node_types=0x1,0x1,0x1,0x1 num_inputs=1 vid_cap_nr=0,1,2,3
+
 # Configure and build with testing enabled
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=ON
 cmake --build build
@@ -20,5 +23,8 @@ done < <(
         ! -path '*/config_utilities/*' \
         ! -path '*/config_utilities-*/*'
 )
+
+# Remove the mocked cameras
+sudo modprobe -r vivid
 
 exit $err

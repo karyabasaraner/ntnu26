@@ -18,7 +18,6 @@
 
 namespace core {
 
-// NOLINTNEXTLINE(clang-diagnostic-global-constructors, cert-err58-cpp)
 const std::unordered_map<std::string, uint32_t> Camera::FOURCC_FORMATS = {
     {"YUVY", V4L2_PIX_FMT_YUYV}
 };
@@ -51,6 +50,7 @@ bool Camera::start() {
     }
 
     _running = true;
+    spdlog::info("Started streaming for camera: {}", _config.device);
     _worker = std::thread(&Camera::_capture_loop, this);
     return true;
 }
