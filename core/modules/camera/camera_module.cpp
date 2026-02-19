@@ -2,6 +2,7 @@
 #include "camera.hpp"
 #include "configs.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <spdlog/spdlog.h>
@@ -23,7 +24,7 @@ uint8_t CameraModule::get_num_cameras() const {
 uint8_t CameraModule::get_running_cameras() const {
     uint8_t count = 0;
     for (const auto& camera : _cameras) {
-        if (camera->is_valid() && camera->is_running()) {
+        if (camera && camera->is_valid() && camera->is_running()) {
             count++;
         }
     }
@@ -32,20 +33,30 @@ uint8_t CameraModule::get_running_cameras() const {
 
 void CameraModule::start_cameras(size_t index) {
     if (index > 0 && index < _cameras.size()) {
-        _cameras[index]->start();
+        auto& camera = _cameras[index];
+        if (camera && camera->is_valid()) {
+            camera->start();
+        }
     } else {
         for (const auto& camera : _cameras) {
-            camera->start();
+            if (camera && camera->is_valid()) {
+                camera->start();
+            }
         }
     }
 }
 
 void CameraModule::stop_cameras(size_t index) {
     if (index > 0 && index < _cameras.size()) {
-        _cameras[index]->stop();
+        auto& camera = _cameras[index];
+        if (camera && camera->is_valid()) {
+            camera->stop();
+        }
     } else {
         for (const auto& camera : _cameras) {
-            camera->stop();
+            if (camera && camera->is_valid()) {
+                camera->stop();
+            }
         }
     }
 }

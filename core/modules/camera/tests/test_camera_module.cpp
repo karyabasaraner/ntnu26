@@ -7,7 +7,7 @@ const std::string TEST_CONFIG_PATH = "ci/configs/four-cameras.yaml";
 
 TEST(CameraModuleTest, InitializeCameras) {
     // WHEN: Camera module is initialized with config with 4 cameras
-    core::CameraModule camera_module(TEST_CONFIG_PATH);
+    const core::CameraModule camera_module(TEST_CONFIG_PATH);
 
     // THEN: 4 cameras are initialized
     EXPECT_EQ(camera_module.get_num_cameras(), 4);

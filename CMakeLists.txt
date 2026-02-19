@@ -26,6 +26,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/third_party.cmake)
 # Core/modules
 add_subdirectory(core/utils)
 add_subdirectory(core/modules/camera)
+add_subdirectory(core/modules/shared_memory)
 
 # Testing Setup
 if(ENABLE_TESTING)

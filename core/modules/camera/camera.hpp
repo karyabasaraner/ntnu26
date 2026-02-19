@@ -2,9 +2,14 @@
 #define WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_HPP
 
 #include "../utils/configs.hpp"
+#include "../shared_memory/shared_dict.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -32,23 +37,26 @@ public:
 private:
     CameraConfig _config;
     int _file_desc = -1;
-    static const int REQ_BUFFER_COUNT = 2;
     static const std::unordered_map<std::string, uint32_t> FOURCC_FORMATS;
     std::atomic<bool> _running = false;
     std::thread _worker;
 
+    // Buffer struct for memory mapping
     struct Buffer {
         void* start;
         size_t length;
     };
     std::vector<Buffer> _buffers;
 
+    // Shared memory dictionary for inter-module communication
+    std::shared_ptr<SharedDict> _shdict;
+
     bool _close_device();
     bool _configure() const;
     bool _init_mmap();
     bool _open_device();
     void _capture_loop();
-    void _process_frame(void* data, size_t length) const;
+    void _process_frame(void* data, size_t length, size_t index, const std::chrono::steady_clock::time_point& timestamp) const;
 };
 
 } // namespace core

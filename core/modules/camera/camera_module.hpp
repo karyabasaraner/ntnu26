@@ -1,6 +1,7 @@
 #ifndef WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_MODULE_HPP
 #define WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_MODULE_HPP
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>

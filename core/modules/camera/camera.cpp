@@ -2,13 +2,16 @@
 
 #include "../utils/configs.hpp"
 
+#include <cerrno>
+#include <chrono>
 #include <cstddef>
-#include <cstring>
+#include <cstdint>
 #include <fcntl.h>
 #include <filesystem>
 #include <linux/videodev2.h>
 #include <poll.h>
 #include <spdlog/spdlog.h>
+#include <string>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/poll.h>
@@ -136,7 +139,7 @@ bool Camera::_configure() const {
 
 bool Camera::_init_mmap() {
     struct v4l2_requestbuffers req{};
-    req.count = REQ_BUFFER_COUNT;
+    req.count = _config.req_buffer_count;
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
 
@@ -200,7 +203,8 @@ void Camera::_capture_loop() {
 
         // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
         if (ioctl(_file_desc, VIDIOC_DQBUF, &buf) == 0) {
-            _process_frame(_buffers[buf.index].start, buf.bytesused);
+            const auto timestamp = std::chrono::steady_clock::now();
+            _process_frame(_buffers[buf.index].start, buf.bytesused, buf.index, timestamp);
 
             // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
             if (ioctl(_file_desc, VIDIOC_QBUF, &buf) < 0) {
@@ -214,9 +218,12 @@ void Camera::_capture_loop() {
     }
 }
 
-void Camera::_process_frame(void* data, size_t length) const {
-    spdlog::info("Received frame of length: {} from device: {}", length, _config.device);
-    data = data; // TODO(MJ): Process frame data here
+void Camera::_process_frame(void* data, size_t length, size_t index, const std::chrono::steady_clock::time_point& timestamp) const {
+    spdlog::info("Received frame of length: {} from device: {} at index: {}", length, _config.device, index);
+    const uint64_t timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(timestamp.time_since_epoch()).count();
+    if (_shdict) {
+        _shdict->add(_config.name, data, length, timestamp_ns);
+    }
 }
 
 } // namespace core

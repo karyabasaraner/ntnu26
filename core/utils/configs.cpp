@@ -14,6 +14,7 @@ void declare_config(CameraConfig& config) {
     config::field(config.fps, "fps", "Frames per second");
     config::field(config.height, "height", "Image height in pixels");
     config::field(config.name, "name", "Name of the camera");
+    config::field(config.req_buffer_count, "req_buffer_count", "Number of buffers to request for memory mapping");
     config::field(config.width, "width", "Image width in pixels");
 }
 

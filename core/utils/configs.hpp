@@ -9,6 +9,7 @@ namespace core {
 struct CameraConfig {
     int fps;
     int height;
+    int req_buffer_count;
     int width;
     std::string device;
     std::string format;
