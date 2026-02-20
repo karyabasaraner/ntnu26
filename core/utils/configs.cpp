@@ -7,6 +7,11 @@
 
 namespace core {
 
+void declare_config(TransformConfig& config) {
+    config::name("TransformConfig");
+    config::field(config.name, "name", "Name of the transform to apply");
+}
+
 void declare_config(CameraConfig& config) {
     config::name("CameraConfig");
     config::field(config.device, "device", "Device path of the camera");
@@ -16,6 +21,7 @@ void declare_config(CameraConfig& config) {
     config::field(config.name, "name", "Name of the camera");
     config::field(config.req_buffer_count, "req_buffer_count", "Number of buffers to request for memory mapping");
     config::field(config.width, "width", "Image width in pixels");
+    config::field(config.transforms, "transforms", "List of transforms to apply sequentially");
 }
 
 void declare_config(RootConfig& config) {

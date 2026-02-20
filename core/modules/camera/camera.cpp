@@ -39,8 +39,7 @@ Camera::Camera(CameraConfig config) : _config(std::move(config)) {
         return;
     }
 
-    // Set config in the shared memory client
-    _shdict_client.set_config(_config);
+    _shdict_client.initialize(_config);
 }
 
 Camera::~Camera() {

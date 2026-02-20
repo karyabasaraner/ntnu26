@@ -6,6 +6,11 @@
 
 namespace core {
 
+// Transforms applied sequentially to the raw data
+struct TransformConfig {
+    std::string name;
+};
+
 struct CameraConfig {
     int fps;
     int height;
@@ -14,6 +19,7 @@ struct CameraConfig {
     std::string device;
     std::string format;
     std::string name;
+    std::vector<TransformConfig> transforms;
 };
 
 struct RootConfig {

@@ -26,7 +26,7 @@ if $ALL_MODE; then
   echo "Running clang-tidy on all files..."
   FILES=$(jq -r '.[].file' $COMPILE_COMMANDS | grep '^/workspaces/core/core')
   for file in $FILES; do
-    clang-tidy-18 "$file" --export-fixes=clang-tidy-fixes.yaml --quiet -p $COMPILE_COMMANDS || true
+    clang-tidy-18 "$file" --export-fixes=clang-tidy-fixes.yaml --fix -p $COMPILE_COMMANDS || true
   done
   echo "clang-tidy all completed."
 else

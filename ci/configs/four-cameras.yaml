@@ -6,6 +6,8 @@ cameras:
     fps: 30
     format: UYVY
     req_buffer_count: 4
+    transforms:
+      - name: UYVY2RGB
   - name: front_right
     device: /dev/video1
     width: 1280
@@ -13,6 +15,8 @@ cameras:
     fps: 30
     format: UYVY
     req_buffer_count: 4
+    transforms:
+      - name: UYVY2RGB
   - name: left
     device: /dev/video2
     width: 1280
@@ -20,6 +24,8 @@ cameras:
     fps: 30
     format: UYVY
     req_buffer_count: 4
+    transforms:
+      - name: UYVY2RGB
   - name: right
     device: /dev/video3
     width: 1280
@@ -27,3 +33,5 @@ cameras:
     fps: 30
     format: UYVY
     req_buffer_count: 4
+    transforms:
+      - name: UYVY2RGB

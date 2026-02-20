@@ -1,20 +1,24 @@
 #include "shared_dict_client.hpp"
-#include "../utils/configs.hpp"
 
+#include "configs.hpp"
+#include "transforms.hpp"
+#include "utils.hpp"
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <memory>
 #include <mutex>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include <cuda_runtime.h>
-#include <nppi_color_conversion.h>
-
-#include <fstream>
 
 namespace core {
 
 SharedDictClient::SharedDictClient() {
-    _start_processing();
+    // NOTE: We don't have the config at construction, so we can't start processing yet
+    spdlog::info("SharedDictClient constructed, waiting for initialization");
 }
 
 SharedDictClient::~SharedDictClient() {
@@ -33,10 +37,17 @@ void SharedDictClient::_start_processing() {
 void SharedDictClient::_stop_processing() {
     spdlog::info("Stopping SharedDictClient worker thread");
     {
-        std::lock_guard<std::mutex> lock(_queue_mutex);
+        std::lock_guard<std::mutex> const lock(_queue_mutex);
         _stop = true;
     }
     _cv.notify_all();
+}
+
+void SharedDictClient::initialize(CameraConfig config) {
+    _config = std::move(config);
+    _get_transforms_from_config();
+
+    _start_processing();
 }
 
 void SharedDictClient::add(const std::string& key, const void* data, size_t length, uint64_t timestamp_ns) {
@@ -53,7 +64,7 @@ void SharedDictClient::add(const std::string& key, const void* data, size_t leng
         // Enqueue the data for processing
         DataEntry entry{key, std::move(buf), timestamp_ns};
         {
-            std::lock_guard<std::mutex> lock(_queue_mutex);
+            std::lock_guard<std::mutex> const lock(_queue_mutex);
             if (_stop) {
                 spdlog::warn("Stopped, not adding data: {}", key);
                 return;
@@ -68,50 +79,6 @@ void SharedDictClient::add(const std::string& key, const void* data, size_t leng
     } else {
         spdlog::warn("Attempted to add data with zero length for key: {}", key);
     }
-}
-
-void SharedDictClient::_tmp_cuda_convert(std::vector<uint8_t>& data) {
-    uint8_t* d_src;
-    uint8_t* d_dst;
-
-    size_t src_size = _config.width * _config.height * 2;   // UYVY = 16 bits per pixel
-    size_t dst_size = _config.width * _config.height * 3;   // RGB
-
-    cudaMalloc(&d_src, src_size);
-    cudaMalloc(&d_dst, dst_size);
-
-    cudaMemcpy(d_src, data.data(), data.size(), cudaMemcpyHostToDevice);
-
-    auto start_time = std::chrono::steady_clock::now();
-    NppiSize roi{_config.width, _config.height};
-
-    // Convert from UYVY to RGB using NPP
-    nppiYCbCr422ToRGB_8u_C2C3R(d_src, _config.width * 2, d_dst, _config.width * 3, roi);
-    auto end_time = std::chrono::steady_clock::now();
-    auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count();
-    float duration_ms = duration_ns / 1e6f;
-    spdlog::info("CUDA conversion took {} ms", duration_ms);
-
-    auto ts = std::chrono::duration_cast<std::chrono::nanoseconds>(
-              std::chrono::steady_clock::now().time_since_epoch()).count();
-    std::string out_path = "/workspaces/core/converted_" + std::to_string(ts) + ".ppm";
-
-    // write PPM (P6) header + raw RGB bytes
-    std::vector<uint8_t> h_dst(dst_size);
-    cudaMemcpy(h_dst.data(), d_dst, dst_size, cudaMemcpyDeviceToHost);
-    std::ofstream ofs(out_path, std::ios::binary);
-    if (ofs) {
-        ofs << "P6\n" << _config.width << ' ' << _config.height << "\n255\n";
-        ofs.write(reinterpret_cast<char*>(h_dst.data()), h_dst.size());
-        ofs.close();
-        spdlog::info("Wrote converted image to {}", out_path);
-    } else {
-        spdlog::warn("Failed to open {} for writing", out_path);
-    }
-
-    // cleanup
-    cudaFree(d_src);
-    cudaFree(d_dst);
 }
 
 void SharedDictClient::_process_queue() {
@@ -133,13 +100,30 @@ void SharedDictClient::_process_queue() {
             entry = std::move(_data_queue.front());
             _data_queue.pop();
 
-            // 4. Convert img data to RGB
-            _tmp_cuda_convert(entry.data);
+            // 4. Apply all transforms
+            if (_transform != nullptr) {
+                spdlog::info("Applying transforms to entry with key: {}", entry.key);
+                _transform->apply(entry);
+            }
+
         }
 
         // TODO(MJ): Implement actual shared memory writing here!
         spdlog::info("Processing entry with key: {}, data length: {}, timestamp: {}", entry.key, entry.data.size(), entry.timestamp_ns);
     }
+}
+
+void SharedDictClient::_get_transforms_from_config() {
+    std::unique_ptr<Transform> chain = nullptr;
+    for (const auto& config : _config.transforms) {
+        if (config.name == "UYVY2RGB") {
+            chain = std::make_unique<UYVY2RGB>(_config.width, _config.height, config, std::move(chain));
+            spdlog::info("Added UYVY2RGB transform to transform chain");
+        } else {
+            spdlog::warn("Unknown transform in config: {}", config.name);
+        }
+    }
+    _transform = std::move(chain);
 }
 
 } // namespace core
