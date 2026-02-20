@@ -1,11 +1,15 @@
 project(shared_memory LANGUAGES CXX)
 
+find_package(CUDAToolkit REQUIRED)
+
 add_library(shared_memory SHARED shared_dict_client.cpp)
 target_include_directories(shared_memory PUBLIC ${CMAKE_SOURCE_DIR}/core/utils)
 
 target_link_libraries(shared_memory PUBLIC core_utils_configs)
 target_link_libraries(shared_memory PUBLIC spdlog::spdlog)
+target_link_libraries(shared_memory PUBLIC CUDA::cudart CUDA::nppicc CUDA::nppc)
 target_compile_options(core_utils_configs PRIVATE -fPIC) # TODO: WHy is this needed?
+
 
 # if(ENABLE_TESTING)
 #     add_executable(test_shared_memory tests/test_shared_memory.cpp)

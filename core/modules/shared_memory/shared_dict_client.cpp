@@ -1,9 +1,15 @@
 #include "shared_dict_client.hpp"
+#include "../utils/configs.hpp"
 
 #include <cstdint>
 #include <mutex>
 #include <spdlog/spdlog.h>
 #include <string>
+
+#include <cuda_runtime.h>
+#include <nppi_color_conversion.h>
+
+#include <fstream>
 
 namespace core {
 
@@ -64,6 +70,50 @@ void SharedDictClient::add(const std::string& key, const void* data, size_t leng
     }
 }
 
+void SharedDictClient::_tmp_cuda_convert(std::vector<uint8_t>& data) {
+    uint8_t* d_src;
+    uint8_t* d_dst;
+
+    size_t src_size = _config.width * _config.height * 2;   // UYVY = 16 bits per pixel
+    size_t dst_size = _config.width * _config.height * 3;   // RGB
+
+    cudaMalloc(&d_src, src_size);
+    cudaMalloc(&d_dst, dst_size);
+
+    cudaMemcpy(d_src, data.data(), data.size(), cudaMemcpyHostToDevice);
+
+    auto start_time = std::chrono::steady_clock::now();
+    NppiSize roi{_config.width, _config.height};
+
+    // Convert from UYVY to RGB using NPP
+    nppiYCbCr422ToRGB_8u_C2C3R(d_src, _config.width * 2, d_dst, _config.width * 3, roi);
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count();
+    float duration_ms = duration_ns / 1e6f;
+    spdlog::info("CUDA conversion took {} ms", duration_ms);
+
+    auto ts = std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now().time_since_epoch()).count();
+    std::string out_path = "/workspaces/core/converted_" + std::to_string(ts) + ".ppm";
+
+    // write PPM (P6) header + raw RGB bytes
+    std::vector<uint8_t> h_dst(dst_size);
+    cudaMemcpy(h_dst.data(), d_dst, dst_size, cudaMemcpyDeviceToHost);
+    std::ofstream ofs(out_path, std::ios::binary);
+    if (ofs) {
+        ofs << "P6\n" << _config.width << ' ' << _config.height << "\n255\n";
+        ofs.write(reinterpret_cast<char*>(h_dst.data()), h_dst.size());
+        ofs.close();
+        spdlog::info("Wrote converted image to {}", out_path);
+    } else {
+        spdlog::warn("Failed to open {} for writing", out_path);
+    }
+
+    // cleanup
+    cudaFree(d_src);
+    cudaFree(d_dst);
+}
+
 void SharedDictClient::_process_queue() {
     // NOTE: (Post-) processing can be done here
     while(true) {
@@ -83,7 +133,8 @@ void SharedDictClient::_process_queue() {
             entry = std::move(_data_queue.front());
             _data_queue.pop();
 
-            // 4. Write to shared memory here (TODO)
+            // 4. Convert img data to RGB
+            _tmp_cuda_convert(entry.data);
         }
 
         // TODO(MJ): Implement actual shared memory writing here!

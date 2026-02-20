@@ -1,6 +1,8 @@
 #ifndef CORE_MODULES_MEMORY_SHARED_DICT_HPP
 #define CORE_MODULES_MEMORY_SHARED_DICT_HPP
 
+#include "../utils/configs.hpp"
+
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -16,7 +18,7 @@ class SharedDictClient {
 public:
     SharedDictClient();
 
-    // Delete copy and move
+    // TODO(MJ): Complete rule of five
     SharedDictClient(const SharedDictClient&) = delete;
     SharedDictClient& operator=(const SharedDictClient&) = delete;
     SharedDictClient(SharedDictClient&&) = delete;
@@ -24,6 +26,7 @@ public:
     ~SharedDictClient();
 
     void add(const std::string& key, const void* data, size_t length, uint64_t timestamp_ns);
+    void set_config(CameraConfig config) { _config = std::move(config); }
 
 private:
     struct DataEntry {
@@ -37,10 +40,13 @@ private:
     std::thread _worker_thread;
     std::condition_variable _cv;
     std::atomic<bool> _stop{false};
+    CameraConfig _config;
 
     void _process_queue();
     void _start_processing();
     void _stop_processing();
+
+    void _tmp_cuda_convert(std::vector<uint8_t>& data);
 };
 
 } // namespace core
