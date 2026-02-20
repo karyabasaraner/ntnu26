@@ -1,5 +1,8 @@
 {
     "editor.fontFamily": "'Ubuntu Mono', monospace",
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false,
     "terminal.integrated.scrollback": 1000000,
     "cmake.buildDirectory": "${workspaceFolder}/build",
     "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",

@@ -22,7 +22,8 @@
 namespace core {
 
 const std::unordered_map<std::string, uint32_t> Camera::FOURCC_FORMATS = {
-    {"YUVY", V4L2_PIX_FMT_YUYV}
+    {"NV16", V4L2_PIX_FMT_NV16},
+    {"UYVY", V4L2_PIX_FMT_UYVY}
 };
 
 Camera::Camera(CameraConfig config) : _config(std::move(config)) {
@@ -190,7 +191,7 @@ void Camera::_capture_loop() {
     pfd.events = POLLIN;
 
     while (_running) {
-        // TODO(MJ): Timeout?
+        // NOTE: Block until a frame is available, most efficient
         int const ret = poll(&pfd, 1, -1);
         if (ret < 0) {
             spdlog::warn("Poll error for device: {}, {}", _config.device, errno);
@@ -204,7 +205,7 @@ void Camera::_capture_loop() {
         // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
         if (ioctl(_file_desc, VIDIOC_DQBUF, &buf) == 0) {
             const auto timestamp = std::chrono::steady_clock::now();
-            _process_frame(_buffers[buf.index].start, buf.bytesused, buf.index, timestamp);
+            _process_frame(_buffers[buf.index].start, buf.bytesused, timestamp);
 
             // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
             if (ioctl(_file_desc, VIDIOC_QBUF, &buf) < 0) {
@@ -218,12 +219,10 @@ void Camera::_capture_loop() {
     }
 }
 
-void Camera::_process_frame(void* data, size_t length, size_t index, const std::chrono::steady_clock::time_point& timestamp) const {
-    spdlog::info("Received frame of length: {} from device: {} at index: {}", length, _config.device, index);
+void Camera::_process_frame(void* data, size_t length, const std::chrono::steady_clock::time_point& timestamp) {
+    // NOTE: Copy as quickly as possible to free this thread for the next frame
     const uint64_t timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(timestamp.time_since_epoch()).count();
-    if (_shdict) {
-        _shdict->add(_config.name, data, length, timestamp_ns);
-    }
+    _shdict_client.add(_config.name, data, length, timestamp_ns);
 }
 
 } // namespace core

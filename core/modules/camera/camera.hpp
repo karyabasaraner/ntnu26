@@ -2,7 +2,7 @@
 #define WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_HPP
 
 #include "../utils/configs.hpp"
-#include "../shared_memory/shared_dict.hpp"
+#include "../shared_memory/shared_dict_client.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -49,14 +49,14 @@ private:
     std::vector<Buffer> _buffers;
 
     // Shared memory dictionary for inter-module communication
-    std::shared_ptr<SharedDict> _shdict;
+    SharedDictClient _shdict_client;
 
     bool _close_device();
     bool _configure() const;
     bool _init_mmap();
     bool _open_device();
     void _capture_loop();
-    void _process_frame(void* data, size_t length, size_t index, const std::chrono::steady_clock::time_point& timestamp) const;
+    void _process_frame(void* data, size_t length, const std::chrono::steady_clock::time_point& timestamp);
 };
 
 } // namespace core
