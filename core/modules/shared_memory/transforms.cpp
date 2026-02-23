@@ -55,8 +55,11 @@ void UYVY2RGB::apply(DataEntry &entry) {
     const int srcStep = _get_width() * 2; // bytes-per-row
     const int dstStep = _get_width() * 3; // bytes-per-row
 
-    // 2. Apply the UYVY to RGB conversion using NPP
-    NppStatus nstatus = nppiYCbCr422ToRGB_8u_C2C3R(
+    // 2. Apply UYVY to RGB conversion
+    // https://docs.nvidia.com/cuda/archive/9.2/npp/group__image__color__model__conversion.html
+    // Cb Y Cr 4:2:2 (nppiCbYCr422ToRGB_8u_C2C3R) [seems to be correct for vivid camera]
+    // Y Cb Cr 4:2:2 (nppiYCbCr422ToRGB_8u_C2C3R)
+    NppStatus nstatus = nppiCbYCr422ToRGB_8u_C2C3R(
         static_cast<const Npp8u*>(_cuda_src_buf),
         srcStep,
         static_cast<Npp8u*>(_cuda_dst_buf),
@@ -64,7 +67,7 @@ void UYVY2RGB::apply(DataEntry &entry) {
         _nppi_roi);
 
     if (nstatus != NPP_SUCCESS) {
-        spdlog::error("nppiYCbCr422ToRGB failed: {}", nstatus);
+        spdlog::error("nppiCbYCr422ToRGB failed: {}", nstatus);
         return;
     }
 

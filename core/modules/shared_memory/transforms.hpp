@@ -1,11 +1,13 @@
-#ifndef DERIVATIVE_HPP
-#define DERIVATIVE_HPP
+#ifndef WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_TRANSFORMS_HPP
+#define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_TRANSFORMS_HPP
 
 #include "utils.hpp"
 #include "../utils/configs.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <nppi_color_conversion.h>
+#include <nppdefs.h>
 
 namespace core {
 

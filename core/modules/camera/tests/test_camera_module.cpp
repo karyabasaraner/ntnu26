@@ -22,7 +22,7 @@ TEST(CameraModuleTest, StartStopCameras) {
 
     // THEN: All cameras are running
     EXPECT_EQ(camera_module.get_running_cameras(), 4);
-    
+
     // WHEN: All cameras are stopped
     camera_module.stop_cameras();
 
