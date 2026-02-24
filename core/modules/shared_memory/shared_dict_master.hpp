@@ -1,6 +1,7 @@
 #ifndef WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_MASTER_HPP
 #define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_MASTER_HPP
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 
@@ -20,14 +21,18 @@ public:
     SharedDictMaster(SharedDictMaster&&) = delete;
     SharedDictMaster& operator=(SharedDictMaster&&) = delete;
 
+    bool is_initialized() const { return _initialized.load(); }
+
 private:
     Config _config;
     int _fd_shm{-1};
+    std::atomic<bool> _initialized{false};
     uint32_t _size_per_buffer{0};
     uint32_t _total_size{0};
     uint8_t _num_ringbuffers{0};
     void* _map{nullptr};
 
+    void _initialize_metadata();
     void _initialize_shm();
 };
 

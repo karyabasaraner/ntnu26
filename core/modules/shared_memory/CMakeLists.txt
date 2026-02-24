@@ -11,7 +11,7 @@ target_link_libraries(shared_memory PUBLIC CUDA::cudart CUDA::nppicc CUDA::nppc)
 target_compile_options(core_utils_configs PRIVATE -fPIC) # TODO: WHy is this needed?
 
 if(ENABLE_TESTING)
-    add_executable(test_shared_memory tests/test_shared_dict_master.cpp)
+    add_executable(test_shared_memory tests/test_shared_dict.cpp)
 
     set_target_properties(test_shared_memory PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"

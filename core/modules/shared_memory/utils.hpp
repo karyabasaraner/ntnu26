@@ -11,6 +11,8 @@ struct DataEntry {
         std::vector<uint8_t> data;
         uint64_t timestamp_ns;
 };
+
+static const std::string SHM_NAME = "/shared_dict";
 } // namespace core
 
 #endif

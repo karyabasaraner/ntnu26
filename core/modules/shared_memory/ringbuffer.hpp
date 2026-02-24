@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <string>
 
 namespace core {
 
@@ -20,6 +21,9 @@ struct Buffer {
     std::atomic<uint32_t> head{0};
     std::atomic<uint32_t> sequence{0};
 
+    //NOLINTNEXTLINE(hicpp-avoid-c-arrays,cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
+    char name[32]; // name of this buffer
+
     uint32_t num_frames; // number of frames in this buffer
     uint32_t size_per_frame; // size of frame in bytes
     uint64_t offset; // offset from shm base
@@ -30,7 +34,6 @@ struct Buffer {
 
 struct Layout {
     uint8_t num_buffers;
-    uint32_t size_per_buffer; // size of each buffer in bytes
 
     //NOLINTNEXTLINE(hicpp-avoid-c-arrays,cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
     Buffer buffers[];

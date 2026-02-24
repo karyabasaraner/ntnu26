@@ -12,12 +12,14 @@
 
 #include "../utils/configs.hpp"
 #include "ringbuffer.hpp"
+#include "utils.hpp"
 
 namespace core {
 
-SharedDictMaster::SharedDictMaster(const std::string& config_path) {
+SharedDictMaster::SharedDictMaster(const std::string& config_path) : _initialized(false) {
     _config.load(config_path);
     _initialize_shm();
+    _initialize_metadata();
 }
 
 SharedDictMaster::~SharedDictMaster() {
@@ -27,7 +29,7 @@ SharedDictMaster::~SharedDictMaster() {
 
     if (_fd_shm >= 0) {
         ::close(_fd_shm);
-        shm_unlink("/shared_dict");
+        shm_unlink(SHM_NAME.c_str());
     }
     spdlog::info("SharedDictMaster resources cleaned up");
 }
@@ -46,7 +48,7 @@ void SharedDictMaster::_initialize_shm() {
         spdlog::info("size_per_buffer {}", _size_per_buffer);
     }
 
-    _fd_shm = shm_open("/shared_dict", O_CREAT | O_RDWR, 0666);
+    _fd_shm = shm_open(SHM_NAME.c_str(), O_CREAT | O_RDWR, 0666);
     if (_fd_shm < 0) {
         spdlog::error("Failed to create shared memory segment");
         throw std::runtime_error("Failed to create shared memory segment");
@@ -65,6 +67,35 @@ void SharedDictMaster::_initialize_shm() {
     }
     std::memset(_map, 0, _total_size);
     spdlog::info("Initialized shared memory with {} bytes", _total_size);
+}
+
+void SharedDictMaster::_initialize_metadata() {
+    // This method initializes the metadata for the ring buffers and frames
+    // such that clients can identify where to write frames and how to interpret the memory layout
+    auto* layout = static_cast<Layout*>(_map);
+    layout->num_buffers = _num_ringbuffers;
+
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+    char* current = static_cast<char*>(_map) + offsetof(Layout, buffers);
+    for (const auto& config : _config.get_config().shared_memory) {
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+        auto* buffer = reinterpret_cast<Buffer*>(current);
+
+        new (&buffer->head) std::atomic<uint32_t>(0);
+        new (&buffer->sequence) std::atomic<uint32_t>(0);
+        std::strncpy(buffer->name, config.name.c_str(), sizeof(buffer->name) - 1);
+        buffer->num_frames = config.num_frames;
+        buffer->size_per_frame = config.size_per_frame;
+        buffer->offset = static_cast<uint64_t>(current - static_cast<char*>(_map));
+
+        const size_t frame_storage = offsetof(ImageFrame, data) + static_cast<size_t>(buffer->size_per_frame);
+        const size_t buffer_storage = offsetof(Buffer, frames) + static_cast<size_t>(buffer->num_frames) * frame_storage;
+
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+        current += buffer_storage;
+        spdlog::info("Initialized buffer '{}', start {}, end {} bytes", config.name, buffer->offset, current - static_cast<char*>(_map));
+    }
+    _initialized.store(true);
 }
 
 } // namespace core
