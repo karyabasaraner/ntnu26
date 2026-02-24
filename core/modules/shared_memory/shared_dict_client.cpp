@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <spdlog/spdlog.h>
+#include <stdexcept>
 #include <string>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -101,12 +102,7 @@ bool SharedDictClient::is_ready() {
         return false;
     }
 
-    if (_buffer_map.empty()) {
-        spdlog::warn("SharedDictClient is not ready: no buffers found in shared memory");
-        return false;
-    }
-
-    if (_buffer_map.find(_config.name) == _buffer_map.end()) {
+    if (_buffer == nullptr) {
         spdlog::warn("SharedDictClient is not ready: buffer '{}' not found in shared memory", _config.name);
         return false;
     }
@@ -171,9 +167,11 @@ void SharedDictClient::_get_shm_structure() {
     auto* layout = static_cast<Layout*>(_map);
     const auto num_buffers = layout->num_buffers;
     for (size_t i = 0; i < num_buffers; ++i) {
-        const auto name = std::string(layout->buffers[i].name);
-        _buffer_map[name] = &layout->buffers[i];
-        spdlog::info("Got buffer: {}", name);
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
+        const auto buffer_name = std::string(layout->buffers[i].name);
+        if (buffer_name == _config.name) {
+            _buffer = &layout->buffers[i];
+        }
     }
 
 }

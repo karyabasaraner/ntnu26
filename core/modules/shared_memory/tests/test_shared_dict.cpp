@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
 #include <string>
 
-#include "../shared_dict_master.hpp"
 #include "../shared_dict_client.hpp"
+#include "../shared_dict_master.hpp"
+#include "configs.hpp"
 
 const std::string TEST_CONFIG_PATH = "ci/configs/four-cameras.yaml";
 
@@ -19,7 +20,7 @@ TEST(ShareDictTest, IntializeShareDictClientNoMaster) {
     core::SharedDictClient shared_dict_client;
 
     // WHEN: SharedDictClient is initialized with config for a camera
-    core::CameraConfig config = {
+    core::CameraConfig const config = {
         .name = "front_left",
     };
     shared_dict_client.initialize(config);
@@ -36,7 +37,7 @@ TEST(ShareDictTest, IntializeShareDictClientMaster) {
     core::SharedDictClient shared_dict_client;
 
     // WHEN: SharedDictClient is initialized with config for a camera
-    core::CameraConfig config = {
+    core::CameraConfig const config = {
         .name = "front_left",
     };
     shared_dict_client.initialize(config);

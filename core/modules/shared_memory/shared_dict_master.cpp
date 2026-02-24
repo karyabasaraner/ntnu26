@@ -1,5 +1,6 @@
 #include "shared_dict_master.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -83,6 +84,8 @@ void SharedDictMaster::_initialize_metadata() {
 
         new (&buffer->head) std::atomic<uint32_t>(0);
         new (&buffer->sequence) std::atomic<uint32_t>(0);
+
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
         std::strncpy(buffer->name, config.name.c_str(), sizeof(buffer->name) - 1);
         buffer->num_frames = config.num_frames;
         buffer->size_per_frame = config.size_per_frame;

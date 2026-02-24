@@ -15,7 +15,6 @@
 #include <queue>
 #include <string>
 #include <thread>
-#include <unordered_map>
 
 namespace core {
 
@@ -35,6 +34,7 @@ public:
     void initialize(CameraConfig config);
 
 private:
+    Buffer* _buffer{nullptr};
     CameraConfig _config;
     int _fd_shm{-1};
     size_t _shm_total_size{0};
@@ -45,7 +45,6 @@ private:
     std::thread _worker_thread;
     std::unique_ptr<core::Transform> _transform;
     void* _map{nullptr};
-    std::unordered_map<std::string, Buffer*> _buffer_map;
 
     void _get_shm_structure();
     void _get_transforms_from_config();
