@@ -1,12 +1,10 @@
 #ifndef WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_MASTER_HPP
 #define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_MASTER_HPP
 
-#include <memory>
+#include <cstdint>
 #include <string>
-#include <unordered_map>
 
 #include "../utils/configs.hpp"
-#include "ringbuffer.hpp"
 
 
 namespace core {
@@ -14,12 +12,23 @@ namespace core {
 class SharedDictMaster {
 public:
     explicit SharedDictMaster(const std::string& config_path);
+    ~SharedDictMaster();
+
+    // Rule of five
+    SharedDictMaster(const SharedDictMaster&) = delete;
+    SharedDictMaster& operator=(const SharedDictMaster&) = delete;
+    SharedDictMaster(SharedDictMaster&&) = delete;
+    SharedDictMaster& operator=(SharedDictMaster&&) = delete;
 
 private:
     Config _config;
-    std::unordered_map<std::string, std::unique_ptr<RingBuffer>> _ringbuffer_map;
+    int _fd_shm{-1};
+    uint32_t _size_per_buffer{0};
+    uint32_t _total_size{0};
+    uint8_t _num_ringbuffers{0};
+    void* _map{nullptr};
 
-    void _initialize();
+    void _initialize_shm();
 };
 
 } // namespace core

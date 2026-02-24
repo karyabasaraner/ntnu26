@@ -1,6 +1,7 @@
 #ifndef WORKSPACES_CORE_CORE_UTILS_CONFIGS_HPP
 #define WORKSPACES_CORE_CORE_UTILS_CONFIGS_HPP
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -10,10 +11,6 @@ struct RingBufferConfig {
     std::string name;
     size_t size_per_frame;
     size_t num_frames;
-};
-
-struct SharedMemoryConfig {
-    std::vector<RingBufferConfig> ringbuffers;
 };
 
 struct TransformConfig {
@@ -33,7 +30,7 @@ struct CameraConfig {
 
 struct RootConfig {
     std::vector<CameraConfig> cameras;
-    SharedMemoryConfig shared_memory;
+    std::vector<RingBufferConfig> shared_memory;
 };
 
 void declare_config(CameraConfig& config);

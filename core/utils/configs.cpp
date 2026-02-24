@@ -14,11 +14,6 @@ void declare_config(RingBufferConfig& config) {
     config::field(config.num_frames, "num_frames", "Number of frames in the ring buffer");
 }
 
-void declare_config(SharedMemoryConfig& config) {
-    config::name("SharedMemoryConfig");
-    config::field(config.ringbuffers, "ringbuffers", "List of ring buffer configurations");
-}
-
 void declare_config(TransformConfig& config) {
     config::name("TransformConfig");
     config::field(config.name, "name", "Name of the transform to apply");
@@ -39,7 +34,7 @@ void declare_config(CameraConfig& config) {
 void declare_config(RootConfig& config) {
     config::name("RootConfig");
     config::field(config.cameras, "cameras", "List of camera configurations");
-    config::field(config.shared_memory, "shared_memory", "Shared memory configuration");
+    config::field(config.shared_memory, "shared_memory", "List of shared memory configurations");
 }
 
 void Config::load(const std::string& config_path) {

@@ -49,3 +49,41 @@ private:
 } // namespace core
 
 #endif
+
+    // _layout = static_cast<Layout*>(map);
+    // _layout->num_buffers = _num_ringbuffers;
+    // _layout->size_per_buffer = _size_per_buffer;
+
+    // // Initialize every buffer
+    // auto* current_buffer = static_cast<char*>(map) + offsetof(Layout, buffers);
+    // for (const auto& config : rb_config) {
+    //     auto* buffer = reinterpret_cast<Buffer*>(current_buffer);
+
+    //     // Initialize buffer metadata
+    //     new (&buffer->head) std::atomic<uint32_t>(0);
+    //     new (&buffer->sequence) std::atomic<uint32_t>(0);
+    //     buffer->num_frames = config.num_frames;
+    //     buffer->size_per_frame = config.size_per_frame;
+
+    //     const auto offset = static_cast<uint64_t>(current_buffer - static_cast<char*>(map));
+    //     if (offset < 0) {
+    //         spdlog::error("Calculated negative offset for buffer '{}'", config.name);
+    //         throw std::runtime_error("Calculated negative offset for buffer");
+    //     }
+    //     buffer->offset = offset;
+    //     spdlog::info("Initialized buffer '{}' at start {} and end {} bytes", config.name, buffer->offset, buffer->offset + _size_per_buffer);
+    //     current_buffer += offsetof(Buffer, frames);
+
+    //     for (uint32_t i = 0; i < buffer->num_frames; ++i) {
+    //         auto* frame = reinterpret_cast<ImageFrame*>(current_buffer);
+    //         frame->timestamp_ns = 0;
+
+    //         const auto offset = static_cast<uint64_t>(current_buffer - static_cast<char*>(map));
+    //         if (offset < 0) {
+    //             spdlog::error("Calculated negative offset for frame {} in buffer '{}'", i, config.name);
+    //             throw std::runtime_error("Calculated negative offset for frame");
+    //         }
+    //         frame->offset = offset;
+    //         current_buffer += sizeof(ImageFrame) + buffer->size_per_frame;
+    //     }
+    // }
