@@ -6,16 +6,25 @@
 
 namespace core {
 
-// Transforms applied sequentially to the raw data
+struct RingBufferConfig {
+    std::string name;
+    size_t size_per_frame;
+    size_t num_frames;
+};
+
+struct SharedMemoryConfig {
+    std::vector<RingBufferConfig> ringbuffers;
+};
+
 struct TransformConfig {
     std::string name;
 };
 
 struct CameraConfig {
-    int fps;
-    int height;
-    int req_buffer_count;
-    int width;
+    size_t fps;
+    size_t height;
+    size_t req_buffer_count;
+    size_t width;
     std::string device;
     std::string format;
     std::string name;
@@ -24,6 +33,7 @@ struct CameraConfig {
 
 struct RootConfig {
     std::vector<CameraConfig> cameras;
+    SharedMemoryConfig shared_memory;
 };
 
 void declare_config(CameraConfig& config);

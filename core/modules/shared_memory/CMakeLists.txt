@@ -2,7 +2,7 @@ project(shared_memory LANGUAGES CXX)
 
 find_package(CUDAToolkit REQUIRED)
 
-add_library(shared_memory SHARED shared_dict_client.cpp transforms.cpp)
+add_library(shared_memory SHARED shared_dict_master.cpp ringbuffer.cpp shared_dict_client.cpp transforms.cpp)
 target_include_directories(shared_memory PUBLIC ${CMAKE_SOURCE_DIR}/core/utils)
 
 target_link_libraries(shared_memory PUBLIC core_utils_configs)

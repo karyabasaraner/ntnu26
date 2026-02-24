@@ -35,3 +35,16 @@ cameras:
     req_buffer_count: 4
     transforms:
       - name: UYVY2RGB
+shared_memory:
+  - name: front_left
+    size_per_frame: 1280*720*3 # bytes
+    num_payloads: 300 # 10 seconds at 30 fps
+  - name: front_right
+    size_per_frame: 1280*720*3 # bytes
+    num_payloads: 300 # 10 seconds at 30 fps
+  - name: left
+    size_per_frame: 1280*720*3 # bytes
+    num_payloads: 300 # 10 seconds at 30 fps
+  - name: right
+    size_per_frame: 1280*720*3 # bytes
+    num_payloads: 300 # 10 seconds at 30 fps
