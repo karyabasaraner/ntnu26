@@ -26,6 +26,7 @@ main() {
         libopencv-dev
         libspdlog-dev
         v4l-utils
+        zlib1g-dev
     )
 
     apt-get update

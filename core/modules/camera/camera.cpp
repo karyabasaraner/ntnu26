@@ -26,7 +26,7 @@ const std::unordered_map<std::string, uint32_t> Camera::FOURCC_FORMATS = {
     {"UYVY", V4L2_PIX_FMT_UYVY}
 };
 
-Camera::Camera(CameraConfig config) : _config(std::move(config)) {
+Camera::Camera(CameraConfig config) : _config(std::move(config)), _shdict_writer(_config) {
     _open_device();
 
     if (!is_valid()) {
@@ -38,8 +38,6 @@ Camera::Camera(CameraConfig config) : _config(std::move(config)) {
     if (!_init_mmap()) {
         return;
     }
-
-    _shdict_client.initialize(_config);
 }
 
 Camera::~Camera() {
@@ -224,7 +222,7 @@ void Camera::_capture_loop() {
 void Camera::_process_frame(void* data, size_t length, const std::chrono::steady_clock::time_point& timestamp) {
     // NOTE: Copy as quickly as possible to free this thread for the next frame
     const uint64_t timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(timestamp.time_since_epoch()).count();
-    _shdict_client.add(_config.name, data, length, timestamp_ns);
+    _shdict_writer.add(_config.name, data, length, timestamp_ns);
 }
 
 } // namespace core

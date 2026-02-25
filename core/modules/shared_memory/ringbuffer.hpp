@@ -9,8 +9,8 @@ namespace core {
 
 struct ImageFrame {
     // One frame of image data, along with metadata
-    uint64_t timestamp_ns;
-    uint64_t offset; // offset from shm / buffer (?) base
+    uint64_t timestamp_ns{0};
+    uint32_t checksum{0}; // simple checksum of the data for integrity checking
 
     //NOLINTNEXTLINE(hicpp-avoid-c-arrays,cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
     uint8_t data[];

@@ -18,7 +18,8 @@ if(ENABLE_TESTING)
 
     target_link_libraries(test_camera_module
                           gtest_main
-                          camera_module)
+                          camera_module
+                          shared_memory)
 
     add_test(NAME CameraModuleTest COMMAND test_camera_module)
 endif()
