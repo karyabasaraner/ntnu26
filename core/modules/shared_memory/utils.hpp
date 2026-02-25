@@ -9,6 +9,7 @@ namespace core {
 struct DataEntry {
         std::string key;
         std::vector<uint8_t> data;
+        uint32_t sequence;
         uint64_t timestamp_ns;
 };
 

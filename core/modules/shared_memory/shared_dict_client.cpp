@@ -5,6 +5,7 @@
 #include "utils.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <fcntl.h>
 #include <spdlog/spdlog.h>
@@ -40,7 +41,6 @@ SharedDictClient::~SharedDictClient() {
 
 bool SharedDictClient::is_ready() const {
     if (_map == nullptr) {
-        spdlog::warn("SharedDictClient is not ready: shared memory map is null");
         return false;
     }
 
@@ -59,6 +59,44 @@ Buffer* SharedDictClient::get_buffer() const {
     }
 
     return _buffer;
+}
+
+ImageFrame* SharedDictClient::get_requested_frame(uint32_t index_from_head) {
+    if (_buffer == nullptr) {
+        spdlog::error("{}: Buffer is null", _config.name);
+        return nullptr;
+    }
+
+    // Current head: confirmed written frames, we want to write next
+    const uint32_t requested_head = _get_requested_head(index_from_head);
+
+    const uint64_t next_frame_offset = _buffer->offset + offsetof(Buffer, frames) + requested_head * (offsetof(ImageFrame, data) + _buffer->size_per_frame);
+    if (next_frame_offset + offsetof(ImageFrame, data) + _buffer->size_per_frame > get_shm_total_size()) {
+        spdlog::error("Next frame offset {} is out of bounds for shared memory size {}", next_frame_offset, get_shm_total_size());
+        return nullptr;
+    };
+
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-type-reinterpret-cast)
+    auto* frame = reinterpret_cast<ImageFrame*>(static_cast<char*>(get_shm_map()) + next_frame_offset);
+    return frame;
+}
+
+uint32_t SharedDictClient::_get_requested_head(uint32_t index_from_head) const {
+    if (_buffer == nullptr) {
+        spdlog::error("Cannot get requested head: buffer is null");
+        return 0;
+    }
+
+    uint32_t requested_head = _buffer->head.load() - index_from_head;
+    if (requested_head >= _buffer->num_frames) {
+        // E.g. requested_head is 305, and num_frames is 300, we want frame 5.
+        requested_head = requested_head % _buffer->num_frames;
+
+    } else if (requested_head < 0) {
+        // E.g. requested_head is -5, and num_frames is 300, we want frame 295.
+        requested_head = _buffer->num_frames + requested_head;
+    }
+    return requested_head;
 }
 
 void SharedDictClient::_get_shm_structure() {

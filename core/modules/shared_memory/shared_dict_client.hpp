@@ -5,6 +5,7 @@
 #include "ringbuffer.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 
@@ -26,6 +27,7 @@ public:
     bool is_ready() const;
     Buffer* get_buffer() const;
     CameraConfig get_config() const { return _config; }
+    ImageFrame* get_requested_frame(uint32_t index_from_head=0);
 
 private:
     Buffer* _buffer{nullptr};
@@ -35,6 +37,7 @@ private:
     void* _map{nullptr};
     std::unordered_map<std::string, Buffer*> _buffer_map;
 
+    uint32_t _get_requested_head(uint32_t index_from_head=0) const;
     void _get_shm_map() ;
     void _get_shm_structure();
     void _get_transforms_from_config();

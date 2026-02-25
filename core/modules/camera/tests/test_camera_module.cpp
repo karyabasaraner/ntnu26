@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
+#include <chrono>
 #include <string>
+#include <thread>
 
 #include "../../shared_memory/shared_dict_master.hpp"
+#include "../../shared_memory/shared_dict_reader.hpp"
+#include "../../shared_memory/utils.hpp"
 #include "../camera_module.hpp"
-#include "/workspaces/core/core/modules/shared_memory/shared_dict_client.hpp"
 #include "configs.hpp"
 
 const std::string TEST_CONFIG_PATH = "ci/configs/four-cameras.yaml";
@@ -39,17 +42,21 @@ TEST(CameraModuleTest, StartWithWritingAndReading) {
 
     // AND: Camera module is initialized with config with 4 cameras
     core::CameraModule camera_module(TEST_CONFIG_PATH);
+    camera_module.start_cameras();
 
-
-    // AND: A separate reading client reading the right camera
+    // WHEN: A separate reader is initialized for one of the cameras
     core::CameraConfig const config = {
         .name = "right",
     };
-    core::SharedDictClient const shared_dict_client(config);
+    core::SharedDictReader shared_dict_reader(config);
 
+    // THEN: Reader should be ready to read frames from shared memory
+    EXPECT_TRUE(shared_dict_reader.is_ready());
 
-    camera_module.start_cameras();
-
-    // THEN: The current head has advanced, indicating that frames are being written to shared memory
-
+    // WHEN: Reader attempts to read frames
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    core::DataEntry entry;
+    shared_dict_reader.read(entry);
+    EXPECT_GT(entry.timestamp_ns, 0);
+    EXPECT_GE(entry.sequence, 0);
 }

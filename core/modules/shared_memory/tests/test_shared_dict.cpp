@@ -15,10 +15,10 @@ TEST(SharedDictTest, InitializeSharedDictMaster) {
     EXPECT_TRUE(shared_dict_master.is_initialized());
 }
 
-TEST(ShareDictTest, IntializeShareDictClientNoMaster) {
+TEST(ShareDictTest, IntializeShareDictNoMaster) {
     // GIVEN: SharedDictClient without master is not ready
     core::CameraConfig const config = {
-        .name = "front_left",
+        .name = "right",
     };
 
     // WHEN: SharedDictClient is initialized with config for a camera
@@ -26,4 +26,18 @@ TEST(ShareDictTest, IntializeShareDictClientNoMaster) {
 
     // THEN: SharedDictClient should not be ready to write
     EXPECT_FALSE(shared_dict_client.is_ready());
+}
+
+TEST(ShareDictTest, InitializeSharedDictClientWithMaster) {
+    // GIVEN: A shm master that is setup
+    const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
+
+    // WHEN: SharedDictClient is initialized with config for a camera
+    core::CameraConfig const config = {
+        .name = "right",
+    };
+    core::SharedDictClient const shared_dict_client(config);
+
+    // THEN: SharedDictClient should be ready to write
+    EXPECT_TRUE(shared_dict_client.is_ready());
 }
