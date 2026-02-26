@@ -2,6 +2,7 @@
 #define WORKSPACES_CORE_CORE_UTILS_CONFIGS_HPP
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,7 @@ struct CameraConfig {
     std::string format;
     std::string name;
     std::vector<TransformConfig> transforms;
+    uint32_t subsample_factor{1};
 };
 
 struct RootConfig {

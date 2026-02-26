@@ -47,7 +47,6 @@ Camera::~Camera() {
 
 bool Camera::start() {
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
     if (ioctl(_file_desc, VIDIOC_STREAMON, &type) < 0) {
         spdlog::warn("Failed to start streaming: {}, {}", _config.device, errno);
         return false;
@@ -68,7 +67,6 @@ void Camera::stop() {
     spdlog::info("Stopped capture thread for camera: {}", _config.device);
 
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
     if (ioctl(_file_desc, VIDIOC_STREAMOFF, &type) < 0) {
         spdlog::warn("Failed to stop streaming for device: {}, {}", _config.device, errno);
     }
@@ -122,19 +120,47 @@ bool Camera::_configure() const {
     struct v4l2_format fmt{};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    // NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
     fmt.fmt.pix.width = _config.width;
     fmt.fmt.pix.height = _config.height;
     fmt.fmt.pix.pixelformat = FOURCC_FORMATS.at(_config.format);
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
-    // NOLINTEND(cppcoreguidelines-pro-type-union-access)
 
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
     if (ioctl(_file_desc, VIDIOC_S_FMT, &fmt) < 0) {
         spdlog::warn("Failed to set format for device: {}, {}", _config.device, errno);
         return false;
     }
     spdlog::info("Configured camera device: {}", _config.device);
+
+    // Try to set FPS if requested via config
+    if (_config.fps > 0) {
+        struct v4l2_streamparm sparm{};
+        sparm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+        // First query current parameters and capabilities
+        if (ioctl(_file_desc, VIDIOC_G_PARM, &sparm) == 0) {
+            if ((sparm.parm.capture.capability & V4L2_CAP_TIMEPERFRAME) == 0) {
+                spdlog::info("Driver does not expose timeperframe; cannot set FPS for device: {}", _config.device);
+            } else {
+                // timeperframe = numerator/denominator seconds per frame; FPS = denominator/numerator
+                sparm.parm.capture.timeperframe.numerator = 1;
+                sparm.parm.capture.timeperframe.denominator = _config.fps; // integer FPS from config
+
+                if (ioctl(_file_desc, VIDIOC_S_PARM, &sparm) < 0) {
+                    spdlog::warn("Failed to set FPS={} on device: {}, {}", _config.fps, _config.device, errno);
+                } else {
+                    // Read back actual value the driver accepted
+                    if (ioctl(_file_desc, VIDIOC_G_PARM, &sparm) == 0 && sparm.parm.capture.timeperframe.numerator != 0) {
+                        const double actual_fps = static_cast<double>(sparm.parm.capture.timeperframe.denominator) / static_cast<double>(sparm.parm.capture.timeperframe.numerator);
+                        spdlog::info("Requested FPS={} -> actual {:.2f} for device: {}", _config.fps, actual_fps, _config.device);
+                    } else {
+                        spdlog::info("Requested FPS={} for device: {} (could not verify actual)", _config.fps, _config.device);
+                    }
+                }
+            }
+        } else {
+            spdlog::warn("VIDIOC_G_PARM unsupported; cannot set FPS for device: {}, {}", _config.device, errno);
+        }
+    }
     return true;
 }
 
@@ -144,7 +170,6 @@ bool Camera::_init_mmap() {
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
 
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
     if (ioctl(_file_desc, VIDIOC_REQBUFS, &req) < 0) {
         spdlog::warn("Failed to request buffers for device: {}, {}", _config.device, errno);
         return false;
@@ -157,7 +182,6 @@ bool Camera::_init_mmap() {
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index = index;
 
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
         if (ioctl(_file_desc, VIDIOC_QUERYBUF, &buf) < 0) {
             spdlog::warn("Failed to query buffer for device: {}, {}", _config.device, errno);
             return false;
@@ -170,12 +194,10 @@ bool Camera::_init_mmap() {
             PROT_READ | PROT_WRITE,
             MAP_SHARED,
             _file_desc,
-            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-union-access)
             buf.m.offset
         );
 
         // Queue buffer for capture
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
         if (ioctl(_file_desc, VIDIOC_QBUF, &buf) < 0) {
             spdlog::warn("Failed to queue buffer for device: {}, {}", _config.device, errno);
             return false;
@@ -190,8 +212,9 @@ void Camera::_capture_loop() {
     pfd.fd = _file_desc;
     pfd.events = POLLIN;
 
+    const uint32_t subsample = _config.subsample_factor > 0 ? _config.subsample_factor : 1;
+
     while (_running) {
-        // NOTE: Block until a frame is available, most efficient
         int const ret = poll(&pfd, 1, -1);
         if (ret < 0) {
             spdlog::warn("Poll error for device: {}, {}", _config.device, errno);
@@ -202,12 +225,14 @@ void Camera::_capture_loop() {
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_MMAP;
 
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
         if (ioctl(_file_desc, VIDIOC_DQBUF, &buf) == 0) {
-            const auto timestamp = std::chrono::steady_clock::now();
-            _process_frame(_buffers[buf.index].start, buf.bytesused, timestamp);
+            const bool keep = (subsample == 1) || ((buf.sequence % subsample) == 0);
 
-            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
+            if (keep) {
+                const auto timestamp = std::chrono::steady_clock::now();
+                _process_frame(_buffers[buf.index].start, buf.bytesused, timestamp);
+            }
+
             if (ioctl(_file_desc, VIDIOC_QBUF, &buf) < 0) {
                 spdlog::warn("Failed to re-queue buffer for device: {}, {}", _config.device, errno);
                 break;

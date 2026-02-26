@@ -6,6 +6,7 @@
 #include "transforms.hpp"
 #include "utils.hpp"
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -144,12 +145,15 @@ void SharedDictWriter::_process_queue() {
         frame->sequence = seq;
         _buffer->head.fetch_add(1, std::memory_order_release);
 
+        const auto now_ns = std::chrono::steady_clock::now().time_since_epoch().count();
+        const auto dt_frame_now_ms = static_cast<double>(now_ns - entry.timestamp_ns) / 1e6;
         spdlog::debug(
-            "Wrote entry: {}, seq: {}, head: {}, timestamp: {}",
+            "Wrote entry: {}, seq: {}, head: {}, timestamp: {}, dt: {} ms",
             entry.key,
             seq,
             _buffer->head.load(std::memory_order_relaxed),
-            entry.timestamp_ns
+            entry.timestamp_ns,
+            dt_frame_now_ms
         );
     }
 }

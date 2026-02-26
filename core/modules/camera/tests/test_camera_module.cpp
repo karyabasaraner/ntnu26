@@ -9,7 +9,7 @@
 #include "../camera_module.hpp"
 #include "configs.hpp"
 
-const std::string TEST_CONFIG_PATH = "ci/configs/four-cameras.yaml";
+const std::string TEST_CONFIG_PATH = "ci/ci-four-cameras.yaml";
 
 TEST(CameraModuleTest, InitializeCameras) {
     // WHEN: Camera module is initialized with config with 4 cameras

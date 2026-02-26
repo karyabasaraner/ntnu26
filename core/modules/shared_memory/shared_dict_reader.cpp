@@ -1,9 +1,16 @@
 #include "shared_dict_reader.hpp"
 
+#include "configs.hpp"
+#include "ringbuffer.hpp"
+#include "shared_dict_client.hpp"
 #include "utils.hpp"
 
-#include <spdlog/spdlog.h>
+#include <cstddef>
+#include <cstdint>
 #include <span>
+#include <spdlog/spdlog.h>
+#include <utility>
+#include <zconf.h>
 #include <zlib.h>
 
 namespace core {
@@ -24,7 +31,7 @@ void SharedDictReader::read(DataEntry& entry, uint32_t index_from_head) {
     }
 
     const auto size = static_cast<std::size_t>(_buffer->size_per_frame);
-    std::span<const uint8_t> data{static_cast<const uint8_t*>(frame->data), size};
+    std::span<const uint8_t> const data{static_cast<const uint8_t*>(frame->data), size};
 
     auto computed_checksum = crc32(0, static_cast<const Bytef*>(data.data()), static_cast<uInt>(data.size()));
     if (computed_checksum != frame->checksum) {

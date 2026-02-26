@@ -1,4 +1,10 @@
+#ifndef WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_READER_HPP
+#define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_READER_HPP
+
+#include "configs.hpp"
+#include "ringbuffer.hpp"
 #include "shared_dict_client.hpp"
+#include <cstdint>
 
 #include "utils.hpp"
 
@@ -14,3 +20,5 @@ private:
 };
 
 } // namespace core
+
+#endif

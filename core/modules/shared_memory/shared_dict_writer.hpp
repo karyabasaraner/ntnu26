@@ -1,13 +1,21 @@
+#ifndef WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_WRITER_HPP
+#define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_WRITER_HPP
+
+#include "configs.hpp"
 #include "shared_dict_client.hpp"
 
 #include "ringbuffer.hpp"
 #include "transforms.hpp"
+#include "utils.hpp"
 
 #include <atomic>
 #include <condition_variable>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <string>
 #include <thread>
 
 
@@ -42,3 +50,5 @@ private:
 };
 
 } // namespace core
+
+#endif

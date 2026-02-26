@@ -37,7 +37,7 @@ void UYVY2RGB::apply(DataEntry &entry) {
     if (_wrapped_transform != nullptr) {
         _wrapped_transform->apply(entry);
     }
-    spdlog::info("Applying UYVY2RGB transform to entry: {}", entry.key);
+    spdlog::debug("Applying UYVY2RGB transform to entry: {}", entry.key);
 
     const size_t expected_src = static_cast<size_t>(_get_width()) * static_cast<size_t>(_get_height()) * 2u;
     if (entry.data.size() != expected_src) {

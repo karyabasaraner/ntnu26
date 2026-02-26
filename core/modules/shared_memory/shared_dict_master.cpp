@@ -1,14 +1,18 @@
 #include "shared_dict_master.hpp"
 
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <fcntl.h>
+#include <limits>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <string>
 #include <sys/mman.h>
+#include <system_error>
 #include <unistd.h>
 
 #include "../utils/configs.hpp"

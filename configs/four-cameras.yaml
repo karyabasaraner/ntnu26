@@ -1,0 +1,54 @@
+cameras:
+  - name: front_left
+    device: /dev/video0
+    width: 1280
+    height: 720
+    fps: 120
+    subsample_factor: 4
+    format: UYVY
+    req_buffer_count: 4
+    transforms:
+      - name: UYVY2RGB
+  - name: front_right
+    device: /dev/video1
+    width: 1280
+    height: 720
+    fps: 120
+    subsample_factor: 4
+    format: UYVY
+    req_buffer_count: 4
+    transforms:
+      - name: UYVY2RGB
+  - name: left
+    device: /dev/video2
+    width: 1280
+    height: 720
+    fps: 120
+    subsample_factor: 4
+    format: UYVY
+    req_buffer_count: 4
+    transforms:
+      - name: UYVY2RGB
+  - name: right
+    device: /dev/video3
+    width: 1280
+    height: 720
+    fps: 120
+    subsample_factor: 4
+    format: UYVY
+    req_buffer_count: 4
+    transforms:
+      - name: UYVY2RGB
+shared_memory:
+  - name: front_left
+    size_per_frame: 2764800 # 1280*720*3 bytes
+    num_frames: 300 # 10 seconds at 30 fps
+  - name: front_right
+    size_per_frame: 2764800 # 1280*720*3 bytes
+    num_frames: 300 # 10 seconds at 30 fps
+  - name: left
+    size_per_frame: 2764800 # 1280*720*3 bytes
+    num_frames: 300 # 10 seconds at 30 fps
+  - name: right
+    size_per_frame: 2764800 # 1280*720*3 bytes
+    num_frames: 300 # 10 seconds at 30 fps

@@ -5,7 +5,7 @@
 #include "../shared_dict_master.hpp"
 #include "configs.hpp"
 
-const std::string TEST_CONFIG_PATH = "ci/configs/four-cameras.yaml";
+const std::string TEST_CONFIG_PATH = "ci/ci-four-cameras.yaml";
 
 TEST(SharedDictTest, InitializeSharedDictMaster) {
     // WHEN: SharedDictMaster is initialized with config with 4 cameras

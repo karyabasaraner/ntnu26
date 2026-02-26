@@ -130,3 +130,5 @@ sudo ./flash.sh jetson-agx-orin-devkit internal
 sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Jetson Camera AR0234"
 ```
 and reboot.
+
+21. Apply the device tree patch by placing it into the `/boot/` dir.

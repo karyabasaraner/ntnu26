@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.22)
 
 project(Core LANGUAGES CXX)
 
@@ -19,6 +19,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
 
 # Required dependencies
 find_package(spdlog REQUIRED)
+find_package(Threads REQUIRED)
 
 # Third-party dependencies
 include(${CMAKE_SOURCE_DIR}/cmake/third_party.cmake)
@@ -33,3 +34,17 @@ if(ENABLE_TESTING)
     message(STATUS "Testing enabled")
     include(${CMAKE_SOURCE_DIR}/cmake/testing.cmake)
 endif()
+
+# Builds the service binary from core/start.cpp
+add_executable(core-main core/start.cpp)
+
+# Provide root include for headers included like "modules/..."
+target_include_directories(core-main PRIVATE ${CMAKE_SOURCE_DIR}/core)
+
+# Link against the module libraries (camera_module pulls shared_memory transitively)
+target_link_libraries(core-main PRIVATE camera_module Threads::Threads)
+
+# Optional: put binary at build/ instead of nested dir
+set_target_properties(core-main PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)

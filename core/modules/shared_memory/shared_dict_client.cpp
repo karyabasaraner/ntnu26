@@ -20,6 +20,7 @@
 namespace core {
 
 // Overflow-safe helpers
+// NOLINTNEXTLINE(readability-identifier-length)
 inline bool mul_overflow(size_t a, size_t b, size_t& out) noexcept {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(a, b, &out);
@@ -30,6 +31,7 @@ inline bool mul_overflow(size_t a, size_t b, size_t& out) noexcept {
 #endif
 }
 
+// NOLINTNEXTLINE(readability-identifier-length)
 inline bool add_overflow(size_t a, size_t b, size_t& out) noexcept {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_add_overflow(a, b, &out);

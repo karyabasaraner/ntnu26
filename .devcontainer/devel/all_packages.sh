@@ -25,6 +25,7 @@ main() {
         libgtest-dev
         libopencv-dev
         libspdlog-dev
+        libyaml-cpp-dev
         v4l-utils
         zlib1g-dev
     )

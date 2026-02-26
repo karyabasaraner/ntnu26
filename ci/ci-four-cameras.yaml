@@ -3,7 +3,8 @@ cameras:
     device: /dev/video0
     width: 1280
     height: 720
-    fps: 30
+    fps: 60
+    subsample_factor: 2
     format: UYVY
     req_buffer_count: 4
     transforms:
@@ -12,7 +13,8 @@ cameras:
     device: /dev/video1
     width: 1280
     height: 720
-    fps: 30
+    fps: 60
+    subsample_factor: 2
     format: UYVY
     req_buffer_count: 4
     transforms:
@@ -21,7 +23,8 @@ cameras:
     device: /dev/video2
     width: 1280
     height: 720
-    fps: 30
+    fps: 60
+    subsample_factor: 2
     format: UYVY
     req_buffer_count: 4
     transforms:
@@ -30,7 +33,8 @@ cameras:
     device: /dev/video3
     width: 1280
     height: 720
-    fps: 30
+    fps: 60
+    subsample_factor: 2
     format: UYVY
     req_buffer_count: 4
     transforms:

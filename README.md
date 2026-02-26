@@ -15,6 +15,32 @@ and then build with:
 cmake --build build
 ```
 
+### Requirements Jetson
+```
+sudo apt install ccache \
+                 clang-format \
+                 clangd \
+                 cmake \
+                 cuda-toolkit \
+                 ffmpeg \
+                 gdb \
+                 gstreamer1.0-plugins-base \
+                 gstreamer1.0-plugins-good \
+                 gstreamer1.0-tools \
+                 jq \
+                 kmod \
+                 libboost-dev \
+                 libboost-filesystem-dev \
+                 libboost-system-dev \
+                 libeigen3-dev \
+                 libgstreamer-plugins-base1.0-dev \
+                 libgtest-dev \
+                 libopencv-dev \
+                 libspdlog-dev \
+                 v4l-utils \
+                 zlib1g-dev
+```
+
 ## Coordinate convention
 The stack utilizes passive transformations all throughout the code.
 A passive transformation represents a change in frame of reference of e.g. a point, compared to an active transformation, that represent a change of the pose of the point itself.
