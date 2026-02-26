@@ -13,7 +13,7 @@ namespace core {
 class SharedDictMaster {
 public:
     explicit SharedDictMaster(const std::string& config_path);
-    ~SharedDictMaster();
+    ~SharedDictMaster() noexcept;
 
     // Rule of five
     SharedDictMaster(const SharedDictMaster&) = delete;

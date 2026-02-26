@@ -19,6 +19,27 @@
 
 namespace core {
 
+// Overflow-safe helpers
+inline bool mul_overflow(size_t a, size_t b, size_t& out) noexcept {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(a, b, &out);
+#else
+    if (b != 0 && a > std::numeric_limits<size_t>::max() / b) return true;
+    out = a * b;
+    return false;
+#endif
+}
+
+inline bool add_overflow(size_t a, size_t b, size_t& out) noexcept {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_add_overflow(a, b, &out);
+#else
+    if (a > std::numeric_limits<size_t>::max() - b) return true;
+    out = a + b;
+    return false;
+#endif
+}
+
 SharedDictClient::SharedDictClient(CameraConfig config) {
     if (!config.name.empty()) {
         _config = std::move(config);
@@ -67,36 +88,82 @@ ImageFrame* SharedDictClient::get_requested_frame(uint32_t index_from_head) {
         return nullptr;
     }
 
-    // Current head: confirmed written frames, we want to write next
+    // Index in the ring we want to access
     const uint32_t requested_head = _get_requested_head(index_from_head);
 
-    const uint64_t next_frame_offset = _buffer->offset + offsetof(Buffer, frames) + requested_head * (offsetof(ImageFrame, data) + _buffer->size_per_frame);
-    if (next_frame_offset + offsetof(ImageFrame, data) + _buffer->size_per_frame > get_shm_total_size()) {
-        spdlog::error("Next frame offset {} is out of bounds for shared memory size {}", next_frame_offset, get_shm_total_size());
+    // Compute frame_stride = offsetof(ImageFrame, data) + size_per_frame
+    size_t frame_stride = 0;
+    if (add_overflow(static_cast<size_t>(offsetof(ImageFrame, data)),
+                     static_cast<size_t>(_buffer->size_per_frame),
+                     frame_stride)) {
+        spdlog::error("{}: Frame stride overflows (header={} + payload={})", _config.name, offsetof(ImageFrame, data), _buffer->size_per_frame);
         return nullptr;
-    };
+    }
 
+    // Compute frames_base = buffer->offset + offsetof(Buffer, frames)
+    size_t frames_base = 0;
+    if (add_overflow(static_cast<size_t>(_buffer->offset),
+                     static_cast<size_t>(offsetof(Buffer, frames)),
+                     frames_base)) {
+        spdlog::error("{}: Frames base calculation overflow (offset={}, frames_off={})", _config.name, _buffer->offset, offsetof(Buffer, frames));
+        return nullptr;
+    }
+
+    const size_t shm_size = get_shm_total_size();
+
+    if (frames_base > shm_size) {
+        spdlog::error("{}: Frames base offset {} is out of bounds for shared memory size {}", _config.name, frames_base, shm_size);
+        return nullptr;
+    }
+
+    // offset_from_base = requested_head * frame_stride
+    size_t offset_from_base = 0;
+    if (mul_overflow(static_cast<size_t>(requested_head), frame_stride, offset_from_base)) {
+        spdlog::error("{}: Frame offset multiplication would overflow (head={}, stride={})", _config.name, requested_head, frame_stride);
+        return nullptr;
+    }
+
+    if (offset_from_base > shm_size - frames_base) {
+        spdlog::error("{}: Computed frame offset exceeds shared memory (offset={}, base={}, shm={})", _config.name, offset_from_base, frames_base, shm_size);
+        return nullptr;
+    }
+
+    size_t frame_offset = 0;
+    if (add_overflow(frames_base, offset_from_base, frame_offset)) {
+        spdlog::error("{}: Frame offset addition overflow (base={}, offset={})", _config.name, frames_base, offset_from_base);
+        return nullptr;
+    }
+
+    if (frame_stride > shm_size - frame_offset) {
+        spdlog::error("{}: Frame at offset {} (size {}) does not fully fit in shared memory of size {}", _config.name, frame_offset, frame_stride, shm_size);
+        return nullptr;
+    }
+
+    auto* base = static_cast<std::byte*>(get_shm_map());
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-type-reinterpret-cast)
-    auto* frame = reinterpret_cast<ImageFrame*>(static_cast<char*>(get_shm_map()) + next_frame_offset);
+    auto* frame = reinterpret_cast<ImageFrame*>(base + frame_offset);
     return frame;
 }
 
 uint32_t SharedDictClient::_get_requested_head(uint32_t index_from_head) const {
     if (_buffer == nullptr) {
-        spdlog::error("Cannot get requested head: buffer is null");
+        spdlog::error("{}: Cannot get requested head: buffer is null", _config.name);
         return 0;
     }
 
-    uint32_t requested_head = _buffer->head.load() - index_from_head;
-    if (requested_head >= _buffer->num_frames) {
-        // E.g. requested_head is 305, and num_frames is 300, we want frame 5.
-        requested_head = requested_head % _buffer->num_frames;
-
-    } else if (requested_head < 0) {
-        // E.g. requested_head is -5, and num_frames is 300, we want frame 295.
-        requested_head = _buffer->num_frames + requested_head;
+    const uint32_t num_frames = _buffer->num_frames;
+    if (num_frames == 0) {
+        spdlog::error("{}: num_frames is zero", _config.name);
+        return 0;
     }
-    return requested_head;
+
+    const auto head = static_cast<uint64_t>(_buffer->head.load()); // assume monotonically increasing
+    const uint64_t head_mod = head % num_frames;
+    const uint64_t back = static_cast<uint64_t>(index_from_head) % num_frames;
+
+    // (head_mod - back) modulo num_frames, staying in range [0, num_frames)
+    const auto requested = static_cast<uint32_t>((head_mod + num_frames - back) % num_frames);
+    return requested;
 }
 
 void SharedDictClient::_get_shm_structure() {
@@ -106,16 +173,27 @@ void SharedDictClient::_get_shm_structure() {
     }
 
     auto* layout = static_cast<Layout*>(_map);
-    const auto num_buffers = layout->num_buffers;
-    auto cur_buffer_offset = offsetof(Layout, buffers);
+    const size_t num_buffers = layout->num_buffers;
+
+    auto cur_buffer_offset = static_cast<size_t>(offsetof(Layout, buffers));
+
     for (size_t i = 0; i < num_buffers; ++i) {
         if (cur_buffer_offset > _shm_total_size) {
             spdlog::error("Buffer offset {} is out of bounds for shared memory size {}", cur_buffer_offset, _shm_total_size);
             break;
         }
 
+        // Before reading header fields, ensure header area fits
+        size_t header_need = 0;
+        if (add_overflow(cur_buffer_offset, static_cast<size_t>(offsetof(Buffer, frames)), header_need) ||
+            header_need > _shm_total_size) {
+            spdlog::error("Buffer header at offset {} does not fit in shared memory of size {}",
+                          cur_buffer_offset, _shm_total_size);
+            break;
+        }
+
         // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast,cppcoreguidelines-pro-bounds-pointer-arithmetic)
-        auto* buffer = reinterpret_cast<Buffer*>(static_cast<char*>(_map) + cur_buffer_offset);
+        auto* buffer = reinterpret_cast<Buffer*>(static_cast<std::byte*>(_map) + cur_buffer_offset);
         spdlog::info("{}: Found buffer with name {}", _config.name, buffer->name);
 
         /// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
@@ -125,9 +203,34 @@ void SharedDictClient::_get_shm_structure() {
             break;
         }
 
-        // Move to the next buffer based on the size of the current buffer
-        const auto buffer_content_size = offsetof(Buffer, frames) + buffer->num_frames * (offsetof(ImageFrame, data) + buffer->size_per_frame);
-        cur_buffer_offset += buffer_content_size;
+        // Compute size for the entire buffer block: offsetof(Buffer, frames) + num_frames * frame_stride
+        size_t frame_stride = 0;
+        if (add_overflow(static_cast<size_t>(offsetof(ImageFrame, data)),
+                         static_cast<size_t>(buffer->size_per_frame),
+                         frame_stride)) {
+            spdlog::error("Frame stride overflow while iterating buffers (header={} + payload={})", offsetof(ImageFrame, data), buffer->size_per_frame);
+            break;
+        }
+
+        size_t frames_bytes = 0;
+        if (mul_overflow(static_cast<size_t>(buffer->num_frames), frame_stride, frames_bytes)) {
+            spdlog::error("Frames bytes overflow: num_frames={} * stride={}", buffer->num_frames, frame_stride);
+            break;
+        }
+
+        size_t buffer_content_size = 0;
+        if (add_overflow(static_cast<size_t>(offsetof(Buffer, frames)), frames_bytes, buffer_content_size)) {
+            spdlog::error("Buffer content size overflow while iterating buffers");
+            break;
+        }
+
+        size_t next_offset = 0;
+        if (add_overflow(cur_buffer_offset, buffer_content_size, next_offset)) {
+            spdlog::error("Next buffer offset overflow: cur={} + size={}", cur_buffer_offset, buffer_content_size);
+            break;
+        }
+
+        cur_buffer_offset = next_offset;
     }
 }
 
@@ -139,7 +242,7 @@ void SharedDictClient::_get_shm_map() {
         return;
     }
 
-    struct stat shm_stats{};
+    struct stat shm_stats {};
     if (fstat(_fd_shm, &shm_stats) < 0) {
         ::close(_fd_shm);
         spdlog::error("fstat failed on shm fd");

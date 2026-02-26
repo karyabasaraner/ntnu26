@@ -21,128 +21,147 @@ namespace core {
 
 SharedDictWriter::SharedDictWriter(CameraConfig config) : SharedDictClient(std::move(config)) {
     _config = get_config();
-    if (!_config.name.empty()) {
-        _get_transforms_from_config();
-        _start_processing();
 
-        _buffer = get_buffer();
+    if (_config.name.empty()) {
+        spdlog::warn("SharedDictWriter constructed with empty config name; writer not started");
+        return;
     }
+
+    // Build transform chain first
+    _get_transforms_from_config();
+
+    // Obtain buffer before starting the worker to avoid races on readiness
+    _buffer = get_buffer();
+    if (_buffer == nullptr) {
+        spdlog::error("Failed to acquire shared buffer for '{}'; writer not started", _config.name);
+        return;
+    }
+
+    _start_processing();
 }
 
 SharedDictWriter::~SharedDictWriter() {
     _stop_processing();
-    _cv.notify_all();
-
     if (_worker_thread.joinable()) {
         _worker_thread.join();
     }
 }
 
 void SharedDictWriter::add(const std::string& key, const void* data, size_t length, uint64_t timestamp_ns) {
-    // NOTE: This blocks the caller, so no heavy processing here!
-    if (length > 0) {
-        if (data == nullptr) {
-            spdlog::warn("Attempted to add data with non-zero length but null pointer for key: {}", key);
+    // Keep this fast: copy and enqueue only.
+    if (length == 0) {
+        spdlog::warn("Attempted to add data with zero length for key: {}", key);
+        return;
+    }
+    if (data == nullptr) {
+        spdlog::warn("Attempted to add data with non-zero length but null pointer for key: {}", key);
+        return;
+    }
+
+    std::vector<std::uint8_t> buf(length);
+    std::memcpy(buf.data(), data, length);
+    {
+        std::lock_guard<std::mutex> const lock(_queue_mutex);
+        if (_stop) {
+            spdlog::warn("Writer stopped; not adding data: {}", key);
             return;
         }
-
-        std::vector<uint8_t> buf(length);
-        std::memcpy(buf.data(), data, length);
-
-        // Enqueue the data for processing
-        DataEntry entry{key, std::move(buf), 0, timestamp_ns};
-        {
-            std::lock_guard<std::mutex> const lock(_queue_mutex);
-            if (_stop) {
-                spdlog::warn("Stopped, not adding data: {}", key);
-                return;
-            }
-
-            _data_queue.push(std::move(entry));
-        }
-
-        // Notify the worker thread that we have new data
-        _cv.notify_one();
-
-    } else {
-        spdlog::warn("Attempted to add data with zero length for key: {}", key);
+        _data_queue.push(DataEntry{key, std::move(buf), 0, timestamp_ns});
     }
+    _cv.notify_one();
 }
 
 void SharedDictWriter::_start_processing() {
+    if (_worker_thread.joinable()) {
+        spdlog::warn("SharedDictWriter worker thread already running");
+        return;
+    }
     spdlog::info("Starting SharedDictWriter worker thread");
+    _stop = false;
     _worker_thread = std::thread(&SharedDictWriter::_process_queue, this);
 }
 
 void SharedDictWriter::_stop_processing() {
-    spdlog::info("Stopping SharedDictWriter worker thread");
     {
         std::lock_guard<std::mutex> const lock(_queue_mutex);
+        if (_stop) {
+            return;
+        }
         _stop = true;
     }
     _cv.notify_all();
 }
 
 void SharedDictWriter::_process_queue() {
-    // NOTE: (Post-) processing can be done here
-    while(true) {
+    for (;;) {
         DataEntry entry;
-        {
-            // 1. Acquire lock and wait for data (or stop)
-            std::unique_lock<std::mutex> lock(_queue_mutex);
-            _cv.wait(lock, [this] { return _stop || (is_ready() && !_data_queue.empty()); });
 
-            // 2. Check if we should stop
+        // 1) Wait for work (or stop). Keep lock held only around queue ops.
+        {
+            std::unique_lock<std::mutex> lock(_queue_mutex);
+            _cv.wait(lock, [this] {
+                return _stop || (! _data_queue.empty() && is_ready());
+            });
+
             if (_stop && _data_queue.empty()) {
                 spdlog::info("Stopping SharedDictWriter worker thread");
                 return;
             }
 
-            // 3. We have data to process, pop it from the queue
             entry = std::move(_data_queue.front());
             _data_queue.pop();
-
-            // 4. Apply all transforms
-            if (_transform != nullptr) {
-                spdlog::info("Applying transforms to entry with key: {}", entry.key);
-                _transform->apply(entry);
-            }
-
-            // 5. Write the processed data to shared memory
-            ImageFrame* frame = get_requested_frame();
-            if (frame == nullptr) {
-                spdlog::error("Failed to get next image frame for writing, skipping entry with key: {}", entry.key);
-                continue;
-            }
-            frame->timestamp_ns = entry.timestamp_ns;
-            if (entry.data.size() > _buffer->size_per_frame) {
-                spdlog::error("Data size {} exceeds buffer size per frame {}, skipping entry with key: {}", entry.data.size(), _buffer->size_per_frame, entry.key);
-                continue;
-            }
-            // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
-            std::memcpy(frame->data, entry.data.data(), entry.data.size());
-            frame->checksum = crc32(0, entry.data.data(), static_cast<uInt>(entry.data.size()));
-            frame->sequence = _buffer->sequence.load(std::memory_order_relaxed);
-
-            // Update the head and sequence atomics to indicate a new frame is available
-            // since this atomic, and this is the only writer, it should be safe
-            std::atomic_thread_fence(std::memory_order_release);
-            _buffer->sequence.fetch_add(1, std::memory_order_release);
-            _buffer->head.fetch_add(1, std::memory_order_release);
         }
 
-        spdlog::info("Wrote entry: {}, seq: {}, head: {}, timestamp: {}", entry.key, _buffer->sequence.load()-1, _buffer->head.load(), entry.timestamp_ns);
+        // 2) Apply transforms outside the queue lock
+        if (_transform) {
+            _transform->apply(entry);
+        }
+
+        // 3) Write to shared memory
+        ImageFrame* frame = get_requested_frame();
+        if (frame == nullptr) {
+            spdlog::error("Failed to get next image frame for writing; skipping key: {}", entry.key);
+            continue;
+        }
+
+        if (entry.data.size() > _buffer->size_per_frame) {
+            spdlog::error(
+                "Data size {} exceeds buffer size per frame {}; skipping key: {}",
+                entry.data.size(), _buffer->size_per_frame, entry.key
+            );
+            continue;
+        }
+
+        frame->timestamp_ns = entry.timestamp_ns;
+
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
+        std::memcpy(frame->data, entry.data.data(), entry.data.size());
+        frame->checksum = crc32(0, entry.data.data(), static_cast<uInt>(entry.data.size()));
+
+        // Publish: get current sequence (pre-increment), write it to the frame, then advance sequence and head.
+        // Use release ordering to make frame contents visible to readers that use acquire.
+        const auto seq = _buffer->sequence.fetch_add(1, std::memory_order_release);
+        frame->sequence = seq;
+        _buffer->head.fetch_add(1, std::memory_order_release);
+
+        spdlog::debug(
+            "Wrote entry: {}, seq: {}, head: {}, timestamp: {}",
+            entry.key,
+            seq,
+            _buffer->head.load(std::memory_order_relaxed),
+            entry.timestamp_ns
+        );
     }
 }
 
 void SharedDictWriter::_get_transforms_from_config() {
     std::unique_ptr<Transform> chain = nullptr;
-    for (const auto& config : _config.transforms) {
-        if (config.name == "UYVY2RGB") {
-            chain = std::make_unique<UYVY2RGB>(_config.width, _config.height, config, std::move(chain));
+    for (const auto& cfg : _config.transforms) {
+        if (cfg.name == "UYVY2RGB") {
+            chain = std::make_unique<UYVY2RGB>(_config.width, _config.height, cfg, std::move(chain));
             spdlog::info("Added UYVY2RGB transform to transform chain");
         } else {
-            spdlog::warn("Unknown transform in config: {}", config.name);
+            spdlog::warn("Unknown transform in config: {}", cfg.name);
         }
     }
     _transform = std::move(chain);
