@@ -12,7 +12,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug
 ```
 and then build with:
 ```
-cmake --build build
+cmake --build build -j
 ```
 
 ### Requirements Jetson
@@ -37,6 +37,8 @@ sudo apt install ccache \
                  libgtest-dev \
                  libopencv-dev \
                  libspdlog-dev \
+                 python3-dev \
+                 python3.10-venv \
                  v4l-utils \
                  zlib1g-dev
 ```

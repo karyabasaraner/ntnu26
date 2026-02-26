@@ -28,6 +28,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/third_party.cmake)
 add_subdirectory(core/utils)
 add_subdirectory(core/modules/camera)
 add_subdirectory(core/modules/shared_memory)
+add_subdirectory(core/python/bindings)
 
 # Testing Setup
 if(ENABLE_TESTING)

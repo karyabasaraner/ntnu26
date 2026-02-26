@@ -26,6 +26,8 @@ main() {
         libopencv-dev
         libspdlog-dev
         libyaml-cpp-dev
+        python3-dev
+        python3.12-venv
         v4l-utils
         zlib1g-dev
     )
