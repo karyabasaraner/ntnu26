@@ -1,8 +1,10 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <exception>
 #include <iostream>
 #include <spdlog/spdlog.h>
+#include <string>
 #include <thread>
 
 #include "modules/shared_memory/shared_dict_master.hpp"
@@ -37,7 +39,7 @@ int main(int argc, char** argv) {
 
     try {
         spdlog::info("Starting SharedDictMaster with config: {}", config_path);
-        core::SharedDictMaster master(config_path);
+        core::SharedDictMaster const master(config_path);
 
         spdlog::info("Starting CameraModule with config: {}", config_path);
         core::CameraModule cameras(config_path);

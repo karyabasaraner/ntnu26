@@ -2,12 +2,16 @@
 
 #include "../utils/configs.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <fcntl.h>
 #include <filesystem>
+#include <linux/v4l2-controls.h>
 #include <linux/videodev2.h>
 #include <poll.h>
 #include <spdlog/spdlog.h>
@@ -164,9 +168,25 @@ bool Camera::_configure() const {
 
     // Apply settings
     for (const auto& setting : _config.settings) {
+        // Shortcut: if a control id is provided, use it directly
+        if (setting.id != 0) {
+            struct v4l2_control ctrl {};
+            ctrl.id = setting.id;
+            ctrl.value = setting.value;
+
+            if (ioctl(_file_desc, VIDIOC_S_CTRL, &ctrl) < 0) {
+                spdlog::warn("Failed to set control id={:x} value={} on device: {}, {}", setting.id, setting.value, _config.device, errno);
+            } else {
+                spdlog::info("Set control id={:x} value={} on device: {}", setting.id, setting.value, _config.device);
+            }
+            continue;
+        }
+
+        // Fallback: discover control by name
         struct v4l2_queryctrl queryctrl {};
+
         memset(&queryctrl, 0, sizeof(queryctrl));
-        strncpy((char*)queryctrl.name, setting.name.c_str(), sizeof(queryctrl.name) - 1);
+        strncpy(reinterpret_cast<char*>(queryctrl.name), setting.name.c_str(), sizeof(queryctrl.name) - 1);
 
         bool found = false;
         for (queryctrl.id = V4L2_CID_BASE; queryctrl.id < V4L2_CID_LASTP1; queryctrl.id++) {
@@ -265,6 +285,7 @@ void Camera::_capture_loop() {
     pfd.events = POLLIN;
 
     const uint32_t subsample = _config.subsample_factor > 0 ? _config.subsample_factor : 1;
+    auto last_capture_time = std::chrono::steady_clock::now();
 
     while (_running) {
         int const ret = poll(&pfd, 1, -1);
@@ -282,7 +303,8 @@ void Camera::_capture_loop() {
 
             if (keep) {
                 const auto timestamp = std::chrono::steady_clock::now();
-                _process_frame(_buffers[buf.index].start, buf.bytesused, timestamp);
+                _process_frame(_buffers[buf.index].start, buf.bytesused, buf.sequence, timestamp);
+                last_capture_time = timestamp;
             }
 
             if (ioctl(_file_desc, VIDIOC_QBUF, &buf) < 0) {
@@ -296,10 +318,10 @@ void Camera::_capture_loop() {
     }
 }
 
-void Camera::_process_frame(void* data, size_t length, const std::chrono::steady_clock::time_point& timestamp) {
+void Camera::_process_frame(void* data, size_t length, uint32_t sequence, const std::chrono::steady_clock::time_point& timestamp) {
     // NOTE: Copy as quickly as possible to free this thread for the next frame
     const uint64_t timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(timestamp.time_since_epoch()).count();
-    _shdict_writer.add(_config.name, data, length, timestamp_ns);
+    _shdict_writer.add(_config.name, data, length, sequence, timestamp_ns);
 }
 
 } // namespace core

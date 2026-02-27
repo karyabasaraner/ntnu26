@@ -21,6 +21,7 @@ void declare_config(TransformConfig& config) {
 
 void declare_config(SettingsConfig& config) {
     config::name("SettingsConfig");
+    config::field(config.id, "id", "Optional V4L2 control id (hex or decimal), e.g., 0x00980913");
     config::field(config.name, "name", "Name of the setting to apply");
     config::field(config.value, "value", "Value of the setting to apply");
 }

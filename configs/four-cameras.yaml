@@ -3,13 +3,16 @@ cameras:
     device: /dev/video0
     width: 1280
     height: 720
-    fps: 120
-    subsample_factor: 4
+    fps: 30 # NOTE: This is not working; but we set the frame sync setting below
+    subsample_factor: 1
     settings:
       - name: vertical_flip
         value: 1
       - name: white_balance_automatic
         value: 0
+      - name: frame_sync
+        value: 1 # Frame Sync 30 Hz
+        id: 0x009a092a
     format: UYVY
     req_buffer_count: 4
     transforms:
@@ -18,13 +21,16 @@ cameras:
     device: /dev/video1
     width: 1280
     height: 720
-    fps: 120
-    subsample_factor: 4
+    fps: 30
+    subsample_factor: 1
     settings:
       - name: vertical_flip
         value: 1
       - name: white_balance_automatic
         value: 0
+      - name: frame_sync
+        value: 1
+        id: 0x009a092a
     format: UYVY
     req_buffer_count: 4
     transforms:
@@ -33,30 +39,36 @@ cameras:
     device: /dev/video2
     width: 1280
     height: 720
-    fps: 120
-    subsample_factor: 4
+    fps: 30
+    subsample_factor: 1
     settings:
       - name: vertical_flip
         value: 1
       - name: white_balance_automatic
         value: 0
+      - name: frame_sync
+        value: 1
+        id: 0x009a092a
     format: UYVY
-    req_buffer_count: 4
+    req_buffer_count: 1
     transforms:
       - name: UYVY2RGB
   - name: right
     device: /dev/video3
     width: 1280
     height: 720
-    fps: 120
-    subsample_factor: 4
+    fps: 30
+    subsample_factor: 1
     settings:
       - name: vertical_flip
         value: 1
       - name: white_balance_automatic
         value: 0
+      - name: frame_sync
+        value: 1
+        id: 0x009a092a
     format: UYVY
-    req_buffer_count: 4
+    req_buffer_count: 1
     transforms:
       - name: UYVY2RGB
 shared_memory:

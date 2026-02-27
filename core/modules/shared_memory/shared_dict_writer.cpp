@@ -47,7 +47,7 @@ SharedDictWriter::~SharedDictWriter() {
     }
 }
 
-void SharedDictWriter::add(const std::string& key, const void* data, size_t length, uint64_t timestamp_ns) {
+void SharedDictWriter::add(const std::string& key, const void* data, size_t length, uint32_t sequence, uint64_t timestamp_ns) {
     // Keep this fast: copy and enqueue only.
     if (length == 0) {
         spdlog::warn("Attempted to add data with zero length for key: {}", key);
@@ -66,7 +66,7 @@ void SharedDictWriter::add(const std::string& key, const void* data, size_t leng
             spdlog::warn("Writer stopped; not adding data: {}", key);
             return;
         }
-        _data_queue.push(DataEntry{key, std::move(buf), 0, 0, timestamp_ns});
+        _data_queue.push(DataEntry{key, std::move(buf), 0, sequence, timestamp_ns});
     }
     _cv.notify_one();
 }
@@ -139,20 +139,19 @@ void SharedDictWriter::_process_queue() {
         // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
         std::memcpy(frame->data, entry.data.data(), entry.data.size());
         frame->checksum = crc32(0, entry.data.data(), static_cast<uInt>(entry.data.size()));
-
-        const auto written_seq = _buffer->sequence.fetch_add(1, std::memory_order_release);
-        frame->sequence = written_seq;
+        frame->sequence = entry.sequence;
 
         // Advance head
         const auto new_head = get_head(-1);
         _buffer->head.store(new_head, std::memory_order_release);
+        _buffer->sequence.store(entry.sequence, std::memory_order_release);
 
         // Publish: get current sequence (pre-increment), write it to the frame, then advance sequence and head.
         // Use release ordering to make frame contents visible to readers that use acquire.
         spdlog::debug(
             "Wrote {}, seq {}, head {}",
             entry.key,
-            written_seq,
+            entry.sequence,
             next_head
         );
     }

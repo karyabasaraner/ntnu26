@@ -21,6 +21,7 @@ struct TransformConfig {
 struct SettingsConfig {
     std::string name;
     int value;
+    uint32_t id{0};
 };
 
 struct CameraConfig {

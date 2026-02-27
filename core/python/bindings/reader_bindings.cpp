@@ -1,14 +1,18 @@
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
+#include <utility>
 
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
-#include <nanobind/stl/string.h>
-#include <nanobind/stl/tuple.h>
 
-#include "core/utils/configs.hpp"
+#include "core/modules/shared_memory/utils.hpp"
 #include "core/modules/shared_memory/shared_dict_reader.hpp"
+#include "core/utils/configs.hpp"
+#include "nanobind/nb_defs.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -55,7 +59,7 @@ NB_MODULE(core, module) {
         .def("read", [](core::SharedDictReader& self) {
                 core::DataEntry entry{};
                 {
-                    nb::gil_scoped_release rel;
+                    nb::gil_scoped_release const rel;
                     self.read_latest(entry);
                 }
 
