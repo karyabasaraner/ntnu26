@@ -28,6 +28,7 @@ main() {
         libyaml-cpp-dev
         python3-dev
         python3.12-venv
+        rsync
         v4l-utils
         zlib1g-dev
     )

@@ -56,7 +56,7 @@ TEST(CameraModuleTest, StartWithWritingAndReading) {
     // WHEN: Reader attempts to read frames
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     core::DataEntry entry;
-    shared_dict_reader.read(entry);
+    shared_dict_reader.read_latest(entry);
     EXPECT_GT(entry.timestamp_ns, 0);
     EXPECT_GE(entry.sequence, 0);
 }

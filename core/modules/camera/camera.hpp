@@ -56,6 +56,7 @@ private:
     bool _open_device();
     void _capture_loop();
     void _process_frame(void* data, size_t length, const std::chrono::steady_clock::time_point& timestamp);
+    std::string _get_ctrl_name(uint32_t ctrl_id) const;
 };
 
 } // namespace core

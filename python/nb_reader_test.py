@@ -16,7 +16,6 @@ for reader in readers:
         print("Reader not ready")
         exit(1)
 
-    # Read a frame and print metadata
     key, head, seq, ts, array = reader.read()
     print(f"Frame key={key}, head={head}, seq={seq}, ts={ts}")
     frames.append(array)
@@ -24,7 +23,7 @@ for reader in readers:
 
 fig, axs = plt.subplots(2, 2, figsize=(8, 8))
 for i, ax in enumerate(axs.flat):
-    ax.imshow(frames[i].reshape((720, 1280, 3)))  # Replace H, W, C with your frame shape
+    ax.imshow(frames[i].reshape((720, 1280, 3)))
     ax.axis('off')
 plt.tight_layout()
 plt.savefig("frames.png")

@@ -19,6 +19,12 @@ void declare_config(TransformConfig& config) {
     config::field(config.name, "name", "Name of the transform to apply");
 }
 
+void declare_config(SettingsConfig& config) {
+    config::name("SettingsConfig");
+    config::field(config.name, "name", "Name of the setting to apply");
+    config::field(config.value, "value", "Value of the setting to apply");
+}
+
 void declare_config(CameraConfig& config) {
     config::name("CameraConfig");
     config::field(config.device, "device", "Device path of the camera");
@@ -27,6 +33,7 @@ void declare_config(CameraConfig& config) {
     config::field(config.height, "height", "Image height in pixels");
     config::field(config.name, "name", "Name of the camera");
     config::field(config.req_buffer_count, "req_buffer_count", "Number of buffers to request for memory mapping");
+    config::field(config.settings, "settings", "List of key-value settings for the camera (e.g., vertical_flip)");
     config::field(config.subsample_factor, "subsample_factor", "Factor by which to subsample frames (e.g., 4 means keep 1 in every 4 frames)");
     config::field(config.transforms, "transforms", "List of transforms to apply sequentially");
     config::field(config.width, "width", "Image width in pixels");

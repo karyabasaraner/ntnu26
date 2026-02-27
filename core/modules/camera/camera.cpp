@@ -161,7 +161,59 @@ bool Camera::_configure() const {
             spdlog::warn("VIDIOC_G_PARM unsupported; cannot set FPS for device: {}, {}", _config.device, errno);
         }
     }
+
+    // Apply settings
+    for (const auto& setting : _config.settings) {
+        struct v4l2_queryctrl queryctrl {};
+        memset(&queryctrl, 0, sizeof(queryctrl));
+        strncpy((char*)queryctrl.name, setting.name.c_str(), sizeof(queryctrl.name) - 1);
+
+        bool found = false;
+        for (queryctrl.id = V4L2_CID_BASE; queryctrl.id < V4L2_CID_LASTP1; queryctrl.id++) {
+            if (ioctl(_file_desc, VIDIOC_QUERYCTRL, &queryctrl) == 0) {
+                std::string ctrl_name = _get_ctrl_name(queryctrl.id);
+                spdlog::info("Queried control '{}' (id={:x})", ctrl_name, queryctrl.id);
+                if (setting.name == ctrl_name) {
+                    found = true;
+                    spdlog::info("Found control '{}' (id={:x}) for device: {}", ctrl_name, queryctrl.id, _config.device);
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            spdlog::warn("Control '{}' not found on device: {}", setting.name, _config.device);
+            continue;
+        }
+
+        struct v4l2_control ctrl {};
+        ctrl.id = queryctrl.id;
+        ctrl.value = setting.value;
+
+        if (ioctl(_file_desc, VIDIOC_S_CTRL, &ctrl) < 0) {
+            spdlog::warn("Failed to set control '{}'={} on device: {}, {}", setting.name, setting.value, _config.device, errno);
+        } else {
+            spdlog::info("Set control '{}'={} on device: {}", setting.name, setting.value, _config.device);
+        }
+    }
     return true;
+}
+
+std::string Camera::_get_ctrl_name(uint32_t ctrl_id) const {
+    struct v4l2_queryctrl queryctrl {};
+    queryctrl.id = ctrl_id;
+
+    if (ioctl(_file_desc, VIDIOC_QUERYCTRL, &queryctrl) == 0) {
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+        std::string ctrl_name(reinterpret_cast<const char*>(queryctrl.name));
+        std::transform(ctrl_name.begin(), ctrl_name.end(), ctrl_name.begin(), ::tolower);
+        std::replace(ctrl_name.begin(), ctrl_name.end(), ' ', '_');
+        ctrl_name.erase(std::remove(ctrl_name.begin(), ctrl_name.end(), ','), ctrl_name.end());
+        spdlog::info("Queried control name '{}' for id={:x} on device: {}", ctrl_name, ctrl_id, _config.device);
+        return ctrl_name;
+    }
+
+    spdlog::warn("Failed to query control name for id={:x} on device: {}, {}", ctrl_id, _config.device, errno);
+    return "";
 }
 
 bool Camera::_init_mmap() {

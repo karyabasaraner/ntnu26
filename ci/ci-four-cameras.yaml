@@ -5,6 +5,9 @@ cameras:
     height: 720
     fps: 60
     subsample_factor: 2
+    settings:
+      - name: vertical_flip
+        value: 1
     format: UYVY
     req_buffer_count: 4
     transforms:
@@ -15,6 +18,9 @@ cameras:
     height: 720
     fps: 60
     subsample_factor: 2
+    settings:
+      - name: vertical_flip
+        value: 1
     format: UYVY
     req_buffer_count: 4
     transforms:
@@ -25,6 +31,9 @@ cameras:
     height: 720
     fps: 60
     subsample_factor: 2
+    settings:
+      - name: vertical_flip
+        value: 1
     format: UYVY
     req_buffer_count: 4
     transforms:
@@ -35,6 +44,9 @@ cameras:
     height: 720
     fps: 60
     subsample_factor: 2
+    settings:
+      - name: vertical_flip
+        value: 1
     format: UYVY
     req_buffer_count: 4
     transforms:
