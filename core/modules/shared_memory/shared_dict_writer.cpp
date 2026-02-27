@@ -6,7 +6,6 @@
 #include "transforms.hpp"
 #include "utils.hpp"
 #include <atomic>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -67,7 +66,7 @@ void SharedDictWriter::add(const std::string& key, const void* data, size_t leng
             spdlog::warn("Writer stopped; not adding data: {}", key);
             return;
         }
-        _data_queue.push(DataEntry{key, std::move(buf), 0, timestamp_ns});
+        _data_queue.push(DataEntry{key, std::move(buf), 0, 0, timestamp_ns});
     }
     _cv.notify_one();
 }
@@ -113,18 +112,6 @@ void SharedDictWriter::_process_queue() {
             _data_queue.pop();
         }
 
-        // 2) Apply transforms outside the queue lock
-        if (_transform) {
-            _transform->apply(entry);
-        }
-
-        // 3) Write to shared memory
-        ImageFrame* frame = get_requested_frame();
-        if (frame == nullptr) {
-            spdlog::error("Failed to get next image frame for writing; skipping key: {}", entry.key);
-            continue;
-        }
-
         if (entry.data.size() > _buffer->size_per_frame) {
             spdlog::error(
                 "Data size {} exceeds buffer size per frame {}; skipping key: {}",
@@ -133,27 +120,40 @@ void SharedDictWriter::_process_queue() {
             continue;
         }
 
+        // 2) Apply transforms outside the queue lock
+        if (_transform) {
+            _transform->apply(entry);
+        }
+
+        // 3) Write to shared memory, index_from_head = 0 -> next empty frame
+        const uint32_t next_head = get_head(0);
+        ImageFrame* frame = get_frame_by_index(next_head);
+        if (frame == nullptr) {
+            spdlog::error("Failed to get next image frame for writing; skipping key: {}", entry.key);
+            continue;
+        }
+        entry.head = next_head;
+
         frame->timestamp_ns = entry.timestamp_ns;
 
         // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
         std::memcpy(frame->data, entry.data.data(), entry.data.size());
         frame->checksum = crc32(0, entry.data.data(), static_cast<uInt>(entry.data.size()));
 
+        const auto written_seq = _buffer->sequence.fetch_add(1, std::memory_order_release);
+        frame->sequence = written_seq;
+
+        // Advance head
+        const auto new_head = get_head(-1);
+        _buffer->head.store(new_head, std::memory_order_release);
+
         // Publish: get current sequence (pre-increment), write it to the frame, then advance sequence and head.
         // Use release ordering to make frame contents visible to readers that use acquire.
-        const auto seq = _buffer->sequence.fetch_add(1, std::memory_order_release);
-        frame->sequence = seq;
-        _buffer->head.fetch_add(1, std::memory_order_release);
-
-        const auto now_ns = std::chrono::steady_clock::now().time_since_epoch().count();
-        const auto dt_frame_now_ms = static_cast<double>(now_ns - entry.timestamp_ns) / 1e6;
         spdlog::debug(
-            "Wrote entry: {}, seq: {}, head: {}, timestamp: {}, dt: {} ms",
+            "Wrote {}, seq {}, head {}",
             entry.key,
-            seq,
-            _buffer->head.load(std::memory_order_relaxed),
-            entry.timestamp_ns,
-            dt_frame_now_ms
+            written_seq,
+            next_head
         );
     }
 }

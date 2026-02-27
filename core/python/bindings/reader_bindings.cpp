@@ -3,9 +3,9 @@
 #include <string>
 
 #include <nanobind/nanobind.h>
+#include <nanobind/ndarray.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/tuple.h>
-#include <nanobind/ndarray.h>
 
 #include "core/utils/configs.hpp"
 #include "core/modules/shared_memory/shared_dict_reader.hpp"
@@ -45,39 +45,41 @@ static core::SharedDictReader* make_reader_raw(const std::string& config_path,
 
 } // namespace core_bindings
 
-NB_MODULE(core_sharedmem, m) {
-    m.doc() = "nanobind bindings for reading shared memory frames";
+NB_MODULE(core, module) {
+    module.doc() = "nanobind bindings for reading shared memory frames";
 
     // Expose the class without a Python-side __init__; construct via factory below
-    nb::class_<core::SharedDictReader>(m, "SharedDictReader")
-        .def("is_ready", &core::SharedDictReader::is_ready,
-             "Return True if the shared memory mapping is ready")
-        .def("read", [](core::SharedDictReader& self, uint32_t index_from_head) {
+    nb::class_<core::SharedDictReader>(module, "SharedDictReader")
+        .def("is_ready", &core::SharedDictReader::is_ready, "Return True if the shared memory mapping is ready")
+
+        .def("read", [](core::SharedDictReader& self) {
                 core::DataEntry entry{};
                 {
                     nb::gil_scoped_release rel;
-                    self.read(entry, index_from_head);
+                    self.read_latest(entry);
                 }
+
                 // Zero-copy numpy view over an owning vector using a capsule owner
                 auto vec_holder = std::make_shared<std::vector<uint8_t>>(std::move(entry.data));
                 uint8_t* ptr = vec_holder->data();
-                const size_t n = vec_holder->size();
+                const size_t vec_holder_size = vec_holder->size();
 
                 // Keep the vector alive via capsule ownership
                 auto owner = nb::capsule(new std::shared_ptr<std::vector<uint8_t>>(vec_holder),
-                                         [](void* p) noexcept {
-                                             delete reinterpret_cast<std::shared_ptr<std::vector<uint8_t>>*>(p);
-                                         });
+                [](void* pointer) noexcept
+                {
+                    delete static_cast<std::shared_ptr<std::vector<uint8_t>>*>(pointer);
+                });
 
                 // 1-D contiguous array: omit explicit strides so nanobind infers C-contiguous layout
-                nb::ndarray<nb::numpy, uint8_t> arr(ptr, {n}, owner);
-                return nb::make_tuple(entry.key, std::move(arr), entry.sequence, entry.timestamp_ns);
+                nb::ndarray<nb::numpy, uint8_t> arr(ptr, {vec_holder_size}, owner);
+                return nb::make_tuple(entry.key, entry.head, entry.sequence, entry.timestamp_ns, std::move(arr));
             },
-            "index_from_head"_a = 0,
-            "Read a frame; returns (key, np.ndarray[uint8], sequence, timestamp_ns). Array is 1-D; reshape as needed.");
+            "Read a frame; returns (key, np.ndarray[uint8], sequence, timestamp_ns, head). Array is 1-D; reshape as needed.");
 
     // Python factory: returns an owning instance (std::unique_ptr) of SharedDictReader
-    m.def("make_reader", &core_bindings::make_reader_raw, nb::rv_policy::take_ownership,
-          "config_path"_a, "camera_name"_a,
-          "Create a SharedDictReader from a YAML config and camera name");
+    module.def("make_reader", &core_bindings::make_reader_raw, nb::rv_policy::take_ownership,
+        "config_path"_a, "camera_name"_a,
+        "Create a SharedDictReader from a YAML config and camera name"
+    );
 }

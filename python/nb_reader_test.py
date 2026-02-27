@@ -1,35 +1,30 @@
+import matplotlib.pyplot as plt
+import numpy as np
 import os
 import sys
 sys.path.insert(0, os.path.abspath("build"))
 
-import numpy as np
-import torch
-import matplotlib.pyplot as plt
-import core_sharedmem as cs
-r = cs.make_reader("configs/four-cameras.yaml", "front_left")
+import core
+readers = [core.make_reader("configs/four-cameras.yaml", "front_left"),
+           core.make_reader("configs/four-cameras.yaml", "front_right"),
+           core.make_reader("configs/four-cameras.yaml", "left"),
+           core.make_reader("configs/four-cameras.yaml", "right")]
 
-if not r.is_ready():
-    print("reader is not ready")
-    exit(1)
-print("reader is ready")
+frames = []
+for reader in readers:
+    if not reader.is_ready():
+        print("Reader not ready")
+        exit(1)
 
-plt_im = None
-for i in range(10):
-    key, arr, seq, ts = r.read()
-    print(f"Frame {i}: key={key}, seq={seq}, ts={ts}")
+    # Read a frame and print metadata
+    key, head, seq, ts, array = reader.read()
+    print(f"Frame key={key}, head={head}, seq={seq}, ts={ts}")
+    frames.append(array)
 
-    if ts <= 0:
-        print("Invalid timestamp, skipping frame")
-        continue
 
-    frame = arr.reshape(720, 1280, 3)
-
-    if plt_im is None:
-        plt_im = plt.imshow(frame)
-        plt.axis('off')
-        plt.tight_layout()
-
-    else:
-        plt_im.set_data(frame)
-
-    plt.imsave(f"frame_{i:03d}.png", frame)
+fig, axs = plt.subplots(2, 2, figsize=(8, 8))
+for i, ax in enumerate(axs.flat):
+    ax.imshow(frames[i].reshape((720, 1280, 3)))  # Replace H, W, C with your frame shape
+    ax.axis('off')
+plt.tight_layout()
+plt.savefig("frames.png")

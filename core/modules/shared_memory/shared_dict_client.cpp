@@ -84,14 +84,31 @@ Buffer* SharedDictClient::get_buffer() const {
     return _buffer;
 }
 
-ImageFrame* SharedDictClient::get_requested_frame(uint32_t index_from_head) {
+uint32_t SharedDictClient::get_head(int32_t index_from_head) const {
+    // index_from_head=0 means getting the current head, so empty
+    // index_from_head=1 means getting the most recently completed frame, so one back from head
+    if (_buffer == nullptr) {
+        spdlog::error("{}: Cannot get requested head: buffer is null", _config.name);
+        return 0;
+    }
+
+    const uint32_t num_frames = _buffer->num_frames;
+    if (num_frames == 0) {
+        spdlog::error("{}: num_frames is zero", _config.name);
+        return 0;
+    }
+
+    const auto head = static_cast<int32_t>(_buffer->head.load()) - index_from_head;
+    const auto requested = static_cast<uint32_t>((head % num_frames + num_frames) % num_frames);
+    return requested;
+}
+
+
+ImageFrame* SharedDictClient::get_frame_by_index(uint32_t head_index) {
     if (_buffer == nullptr) {
         spdlog::error("{}: Buffer is null", _config.name);
         return nullptr;
     }
-
-    // Index in the ring we want to access
-    const uint32_t requested_head = _get_requested_head(index_from_head);
 
     // Compute frame_stride = offsetof(ImageFrame, data) + size_per_frame
     size_t frame_stride = 0;
@@ -120,8 +137,8 @@ ImageFrame* SharedDictClient::get_requested_frame(uint32_t index_from_head) {
 
     // offset_from_base = requested_head * frame_stride
     size_t offset_from_base = 0;
-    if (mul_overflow(static_cast<size_t>(requested_head), frame_stride, offset_from_base)) {
-        spdlog::error("{}: Frame offset multiplication would overflow (head={}, stride={})", _config.name, requested_head, frame_stride);
+    if (mul_overflow(static_cast<size_t>(head_index), frame_stride, offset_from_base)) {
+        spdlog::error("{}: Frame offset multiplication would overflow (head={}, stride={})", _config.name, head_index, frame_stride);
         return nullptr;
     }
 
@@ -145,27 +162,6 @@ ImageFrame* SharedDictClient::get_requested_frame(uint32_t index_from_head) {
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-type-reinterpret-cast)
     auto* frame = reinterpret_cast<ImageFrame*>(base + frame_offset);
     return frame;
-}
-
-uint32_t SharedDictClient::_get_requested_head(uint32_t index_from_head) const {
-    if (_buffer == nullptr) {
-        spdlog::error("{}: Cannot get requested head: buffer is null", _config.name);
-        return 0;
-    }
-
-    const uint32_t num_frames = _buffer->num_frames;
-    if (num_frames == 0) {
-        spdlog::error("{}: num_frames is zero", _config.name);
-        return 0;
-    }
-
-    const auto head = static_cast<uint64_t>(_buffer->head.load()); // assume monotonically increasing
-    const uint64_t head_mod = head % num_frames;
-    const uint64_t back = static_cast<uint64_t>(index_from_head) % num_frames;
-
-    // (head_mod - back) modulo num_frames, staying in range [0, num_frames)
-    const auto requested = static_cast<uint32_t>((head_mod + num_frames - back) % num_frames);
-    return requested;
 }
 
 void SharedDictClient::_get_shm_structure() {

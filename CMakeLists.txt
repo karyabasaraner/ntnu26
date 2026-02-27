@@ -21,6 +21,11 @@ set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
 find_package(spdlog REQUIRED)
 find_package(Threads REQUIRED)
 
+# Debug builds has debug logging
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_definitions(-DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG)
+endif()
+
 # Third-party dependencies
 include(${CMAKE_SOURCE_DIR}/cmake/third_party.cmake)
 

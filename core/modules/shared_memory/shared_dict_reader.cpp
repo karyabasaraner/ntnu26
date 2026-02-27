@@ -18,13 +18,15 @@ namespace core {
 SharedDictReader::SharedDictReader(CameraConfig config) : SharedDictClient(std::move(config)), _buffer(get_buffer()) {
 }
 
-void SharedDictReader::read(DataEntry& entry, uint32_t index_from_head) {
+void SharedDictReader::read(DataEntry& entry, int32_t index_from_head) {
     if (!is_ready()) {
         spdlog::warn("SharedDictReader is not ready, cannot read");
         return;
     }
 
-    ImageFrame* frame = get_requested_frame(index_from_head);
+    const auto last_frame_head = get_head(index_from_head);
+    spdlog::debug("Requested frame {} with index_from_head={}", last_frame_head, index_from_head);
+    ImageFrame* frame = get_frame_by_index(last_frame_head);
     if (frame == nullptr) {
         spdlog::warn("Failed to get requested frame, cannot read");
         return;
@@ -40,8 +42,9 @@ void SharedDictReader::read(DataEntry& entry, uint32_t index_from_head) {
     }
 
     // TODO(MJ): How to make all of this ptr arithmetic more clean
-    entry.key.assign(static_cast<const char*>(_buffer->name));
     entry.data.assign(data.begin(), data.end());
+    entry.head = last_frame_head;
+    entry.key.assign(static_cast<const char*>(_buffer->name));
     entry.sequence = frame->sequence;
     entry.timestamp_ns = frame->timestamp_ns;
 

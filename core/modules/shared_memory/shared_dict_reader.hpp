@@ -13,7 +13,8 @@ namespace core {
 class SharedDictReader : public SharedDictClient {
 public:
     explicit SharedDictReader(CameraConfig config={});
-    void read(DataEntry& entry, uint32_t index_from_head=1);
+    void read(DataEntry& entry, int32_t index_from_head);
+    void read_latest(DataEntry& entry) { read(entry, 1); }
 
 private:
     Buffer* _buffer{nullptr};
