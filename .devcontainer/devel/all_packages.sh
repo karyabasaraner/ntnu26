@@ -17,6 +17,7 @@ main() {
         gstreamer1.0-tools
         jq
         kmod
+        libaio-dev
         libboost-dev
         libboost-filesystem-dev
         libboost-system-dev
