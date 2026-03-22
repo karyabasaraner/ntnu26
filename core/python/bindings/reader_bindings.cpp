@@ -34,17 +34,11 @@ static std::unique_ptr<core::SharedDictReader> make_reader(const std::string& co
 }
 
 // Raw-pointer variant for nanobind with take_ownership policy
-static core::SharedDictReader* make_reader_raw(const std::string& config_path,
-                                               const std::string& camera_name) {
-    core::Config cfg;
-    cfg.load(config_path);
-    const auto& cameras = cfg.get_config().cameras;
-    for (const auto& cam : cameras) {
-        if (cam.name == camera_name) {
-            return new core::SharedDictReader(cam);
-        }
-    }
-    throw std::runtime_error("Camera name not found in config: " + camera_name);
+static core::SharedDictReader* make_reader_raw(nb::str config_path, nb::str camera_name) {
+    const std::string config_path_str = config_path.c_str();
+    const std::string camera_name_str = camera_name.c_str();
+    auto reader = make_reader(config_path_str, camera_name_str);
+    return reader.release();
 }
 
 } // namespace core_bindings
@@ -77,9 +71,9 @@ NB_MODULE(core, module) {
 
                 // 1-D contiguous array: omit explicit strides so nanobind infers C-contiguous layout
                 nb::ndarray<nb::numpy, uint8_t> arr(ptr, {vec_holder_size}, owner);
-                return nb::make_tuple(entry.key, entry.head, entry.sequence, entry.timestamp_ns, std::move(arr));
+                return nb::make_tuple(nb::str(entry.key.c_str()), entry.head, entry.sequence, entry.timestamp_ns, std::move(arr));
             },
-            "Read a frame; returns (key, np.ndarray[uint8], sequence, timestamp_ns, head). Array is 1-D; reshape as needed.");
+            "Read a frame; returns (key, head, sequence, timestamp_ns, np.ndarray[uint8]). Array is 1-D; reshape as needed.");
 
     // Python factory: returns an owning instance (std::unique_ptr) of SharedDictReader
     module.def("make_reader", &core_bindings::make_reader_raw, nb::rv_policy::take_ownership,
