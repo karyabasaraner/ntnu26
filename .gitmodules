@@ -3,4 +3,4 @@
 	url = git@github.com:marcojob/config_utilities.git
 [submodule "third-party/libiio"]
 	path = third-party/libiio
-	url = https://github.com/analogdevicesinc/libiio.git
+	url = git@github.com:marcojob/libiio.git
