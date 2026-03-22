@@ -71,6 +71,8 @@ cameras:
     req_buffer_count: 1
     transforms:
       - name: UYVY2RGB
+imu:
+  example: 123
 shared_memory:
   - name: front_left
     size_per_frame: 2764800 # 1280*720*3 bytes
