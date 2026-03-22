@@ -1,0 +1,36 @@
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/gpio/tegra234-gpio.h>
+
+/ {
+	fragment@0 {
+		target-path = "/bus@0/i2c@c250000";
+
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			bmi088@69 {
+				compatible = "bmi,bmi088";
+				reg = <0x69>; /* Use 0x68 if gyro is strapped to 0x68 */
+				accel_i2c_addr = <0x19>;
+				status = "okay";
+
+				accel_irq-gpios = <&gpio_aon TEGRA234_AON_GPIO(BB, 0) GPIO_ACTIVE_HIGH>;
+				gyro_irq-gpios = <&gpio_aon TEGRA234_AON_GPIO(BB, 1) GPIO_ACTIVE_HIGH>;
+
+				timestamps = <&hte_aon TEGRA234_AON_GPIO(BB, 0)>,
+							 <&hte_aon TEGRA234_AON_GPIO(BB, 1)>;
+				timestamp-names = "accelerometer", "gyroscope";
+
+				accel_matrix = [01 00 00 00 01 00 00 00 01];
+				gyro_matrix = [01 00 00 00 01 00 00 00 01];
+				accel_reg_0x53 = <0x0A>;
+				gyro_reg_0x16 = <0x01>;
+				gyro_reg_0x18 = <0x01>;
+			};
+		};
+	};
+};

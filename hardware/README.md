@@ -1,4 +1,4 @@
-## flashing jetson
+## Flashing the jetson
 
 1. Move the e-con Systems release package tar file to the staging directory:
 ```
@@ -132,3 +132,52 @@ sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Jetson Camera AR0234"
 and reboot.
 
 21. Apply the device tree patch by placing it into the `/boot/` dir.
+
+### BMI088 device tree overlay
+0. Some information on this can be found in the [Nvidia developer guide](https://docs.nvidia.com/jetson/archives/r36.4.4/DeveloperGuide/SD/Kernel/Bmi088ImuIioDriver.html)
+1. Ensure that the IMU is present on bus 7:
+```
+sudo i2cdetect -y -r 7
+```
+
+should return:
+```
+     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+00:                         -- -- -- -- -- -- -- -- 
+10: -- -- -- -- -- -- -- -- -- 19 -- -- -- -- -- -- 
+20: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+30: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+40: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+50: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+60: -- -- -- -- -- -- -- -- -- 69 -- -- -- -- -- -- 
+70: -- -- -- -- -- -- -- -- 
+```
+
+2. On the host, prepare the pre-processed device tree file
+```
+export KERNEL_SRC="jetson-flash/kernel_sources/Linux_for_Tegra/source/kernel/kernel-jammy-src"
+export KERNEL_SRC_INLUDE=$KERNEL_SRC/include
+cpp -nostdinc -undef -x assembler-with-cpp -I $KERNEL_SRC_INLUDE -I $KERNEL_SRC_INCLUDE/dt-bindings -I $KERNEL_SRC/arch/arm64/boot/dts bmi088-overlay.dts > bmi088-overlay.pp.dts
+dtc -@ -I dts -O dtb -o bmi088-overlay.dtbo hardware/bmi088-overlay.pp.dts
+```
+
+3. Copy it to the `\boot\` dir.
+4. Now we want to combine the e-con systems and the BMI overlay:
+```
+sudo fdtoverlay \
+  -i /boot/dtb/kernel_tegra234-p3737-0000+p3701-0005-nv.dtb \
+  -o /boot/dtb/kernel_tegra234-p3737-0000+p3701-0005-nv-cam-bmi088.dtb \
+  /boot/tegra234-p3701-0000-p3737-0000-two-lane-ar0234.dtbo \
+  /boot/bmi088-overlay.dtbo
+```
+
+which allows us to replace the `\boot\extlinux\extlinux.conf` entry:
+```
+LABEL JetsonIO
+	MENU LABEL Custom Header Config: <CSI Jetson Camera AR0234>
+	LINUX /boot/Image
+	FDT /boot/dtb/kernel_tegra234-p3737-0000+p3701-0005-nv-cam-bmi088.dtb
+	INITRD /boot/initrd
+	APPEND ${cbootargs} root=PARTUUID=dc2e6fd7-b19d-404f-acfa-bc2aa4223bc5 rw rootwait rootfstype=ext4 mminit_loglevel=4 console=ttyTCU0,115200 console=ttyAMA0,115200 firmware_class.path=/etc/firmware fbcon=map:0 nospectre_bhb video=efifb:off console=tty0
+	# OVERLAYS /boot/bmi088-overlay.dtbo /boot/tegra234-p3701-0000-p3737-0000-two-lane-ar0234.dtbo
+```

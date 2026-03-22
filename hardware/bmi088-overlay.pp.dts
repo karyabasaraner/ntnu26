@@ -1,0 +1,42 @@
+# 0 "bmi088-overlay.dts"
+# 0 "<built-in>"
+# 0 "<command-line>"
+# 1 "bmi088-overlay.dts"
+/dts-v1/;
+/plugin/;
+
+# 1 "jetson-flash/kernel_sources/Linux_for_Tegra/source/kernel/kernel-jammy-src/include/dt-bindings/gpio/gpio.h" 1
+# 5 "bmi088-overlay.dts" 2
+# 1 "jetson-flash/kernel_sources/Linux_for_Tegra/source/kernel/kernel-jammy-src/include/dt-bindings/gpio/tegra234-gpio.h" 1
+# 6 "bmi088-overlay.dts" 2
+
+/ {
+ fragment@0 {
+  target-path = "/bus@0/i2c@c250000";
+
+  __overlay__ {
+   #address-cells = <1>;
+   #size-cells = <0>;
+
+   bmi088@69 {
+    compatible = "bmi,bmi088";
+    reg = <0x69>;
+    accel_i2c_addr = <0x19>;
+    status = "okay";
+
+    accel_irq-gpios = <&gpio_aon ((1 * 8) + 0) 0>;
+    gyro_irq-gpios = <&gpio_aon ((1 * 8) + 1) 0>;
+
+    timestamps = <&hte_aon ((1 * 8) + 0)>,
+        <&hte_aon ((1 * 8) + 1)>;
+    timestamp-names = "accelerometer", "gyroscope";
+
+    accel_matrix = [01 00 00 00 01 00 00 00 01];
+    gyro_matrix = [01 00 00 00 01 00 00 00 01];
+    accel_reg_0x53 = <0x0A>;
+    gyro_reg_0x16 = <0x01>;
+    gyro_reg_0x18 = <0x01>;
+   };
+  };
+ };
+};
