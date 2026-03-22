@@ -48,14 +48,17 @@ int main(int argc, char** argv) {
 
         // Starting IMU
         spdlog::info("Starting IMUModule with config: {}", config_path);
-        core::IMUModule imu(config_path);
-        imu.start();
+        core::IMUModule imus(config_path);
+        imus.start();
 
         spdlog::info("Service running. Press Ctrl+C to stop.");
 
         while (g_running.load(std::memory_order_relaxed)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
+
+        spdlog::info("Stopping IMU...");
+        imus.stop();
 
         spdlog::info("Stopping cameras...");
         cameras.stop_cameras();

@@ -38,16 +38,22 @@ struct CameraConfig {
 };
 
 struct IMUConfig {
-    std::string example_setting;
+    std::string name;
+    std::string device;
+    double sampling_frequency;
+    size_t buffer_samples;
+    bool cyclic_buffer;
+    std::vector<std::string> channels;
 };
 
 struct RootConfig {
     std::vector<CameraConfig> cameras;
-    IMUConfig imu;
+    std::vector<IMUConfig> imus;
     std::vector<RingBufferConfig> shared_memory;
 };
 
 void declare_config(CameraConfig& config);
+void declare_config(IMUConfig& config);
 void declare_config(RootConfig& config);
 
 class Config {
