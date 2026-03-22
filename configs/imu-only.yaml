@@ -1,0 +1,19 @@
+imus:
+  - name: accelerometer
+    device: "iio:device0"
+    sampling_frequency: 1000 # Hz
+    buffer_samples: 128
+    cyclic_buffer: true
+    channels:
+      - "accel_x"
+      - "accel_y"
+      - "accel_z"
+  - name: gyroscope
+    device: "iio:device1"
+    sampling_frequency: 1000 # Hz
+    buffer_samples: 128
+    cyclic_buffer: true
+    channels:
+      - "anglvel_x"
+      - "anglvel_y"
+      - "anglvel_z"

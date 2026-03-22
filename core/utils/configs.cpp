@@ -40,9 +40,20 @@ void declare_config(CameraConfig& config) {
     config::field(config.width, "width", "Image width in pixels");
 }
 
+void declare_config(IMUConfig& config) {
+    config::name("IMUConfig");
+    config::field(config.name, "name", "Name of the IMU");
+    config::field(config.device, "device", "IIO device identifier (e.g., iio:device0)");
+    config::field(config.sampling_frequency, "sampling_frequency", "Target sampling frequency in Hz");
+    config::field(config.buffer_samples, "buffer_samples", "Number of samples that fit in each buffer refill");
+    config::field(config.cyclic_buffer, "cyclic_buffer", "Whether to use a cyclic IIO buffer");
+    config::field(config.channels, "channels", "List of channel IDs to enable for each sample");
+}
+
 void declare_config(RootConfig& config) {
     config::name("RootConfig");
     config::field(config.cameras, "cameras", "List of camera configurations");
+    config::field(config.imus, "imus", "List of IMU configurations");
     config::field(config.shared_memory, "shared_memory", "List of shared memory configurations");
 }
 
