@@ -32,6 +32,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/third_party.cmake)
 # Core/modules
 add_subdirectory(core/utils)
 add_subdirectory(core/modules/camera)
+add_subdirectory(core/modules/imu)
 add_subdirectory(core/modules/shared_memory)
 add_subdirectory(core/python/bindings)
 
@@ -48,7 +49,7 @@ add_executable(core-main core/start.cpp)
 target_include_directories(core-main PRIVATE ${CMAKE_SOURCE_DIR}/core)
 
 # Link against the module libraries (camera_module pulls shared_memory transitively)
-target_link_libraries(core-main PRIVATE camera_module Threads::Threads)
+target_link_libraries(core-main PRIVATE camera_module imu_module Threads::Threads)
 
 # Optional: put binary at build/ instead of nested dir
 set_target_properties(core-main PROPERTIES

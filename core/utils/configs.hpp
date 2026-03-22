@@ -37,8 +37,13 @@ struct CameraConfig {
     uint32_t subsample_factor{1};
 };
 
+struct IMUConfig {
+    std::string example_setting;
+};
+
 struct RootConfig {
     std::vector<CameraConfig> cameras;
+    IMUConfig imu;
     std::vector<RingBufferConfig> shared_memory;
 };
 

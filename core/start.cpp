@@ -7,9 +7,9 @@
 #include <string>
 #include <thread>
 
-#include "modules/shared_memory/shared_dict_master.hpp"
-// Add camera module to run producers alongside the shared memory master
 #include "modules/camera/camera_module.hpp"
+#include "modules/imu/imu_module.hpp"
+#include "modules/shared_memory/shared_dict_master.hpp"
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static std::atomic<bool> g_running{true};
@@ -41,9 +41,15 @@ int main(int argc, char** argv) {
         spdlog::info("Starting SharedDictMaster with config: {}", config_path);
         core::SharedDictMaster const master(config_path);
 
+        // Starting cameras
         spdlog::info("Starting CameraModule with config: {}", config_path);
         core::CameraModule cameras(config_path);
         cameras.start_cameras(); // start all cameras defined in config
+
+        // Starting IMU
+        spdlog::info("Starting IMUModule with config: {}", config_path);
+        core::IMUModule imu(config_path);
+        imu.start();
 
         spdlog::info("Service running. Press Ctrl+C to stop.");
 
