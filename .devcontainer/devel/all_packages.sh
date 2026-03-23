@@ -5,12 +5,14 @@ export DEBIAN_FRONTEND=noninteractive
 
 main() {
     local pkgs=(
+        bison
         ccache
         clang-format
         clang-tidy-18
         clangd
         cmake
         ffmpeg
+        flex
         gdb
         gstreamer1.0-plugins-base
         gstreamer1.0-plugins-good
@@ -24,8 +26,11 @@ main() {
         libeigen3-dev
         libgstreamer-plugins-base1.0-dev
         libgtest-dev
+        libiio-utils
         libopencv-dev
         libspdlog-dev
+        libusb-1.0-0-dev
+        libxml2-dev
         libyaml-cpp-dev
         python3-dev
         python3.12-venv
