@@ -1,12 +1,8 @@
 #include "imu_device.hpp"
 
-#include <algorithm>
 #include <cerrno>
-#include <chrono>
 #include <cstring>
-#include <stdexcept>
 #include <string>
-#include <string_view>
 
 #include <iio.h>
 #include <spdlog/spdlog.h>
