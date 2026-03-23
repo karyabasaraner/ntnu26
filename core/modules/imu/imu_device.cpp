@@ -1,8 +1,12 @@
 #include "imu_device.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <cerrno>
 #include <cstring>
+#include <sstream>
 #include <string>
+#include <vector>
 
 #include <iio.h>
 #include <spdlog/spdlog.h>
@@ -87,29 +91,52 @@ void IMUDevice::_prepare_channels() {
     }
 }
 
+std::vector<double> IMUDevice::_get_available_frequencies(struct iio_channel* channel) {
+    const char* attr_name = "sampling_frequency_available";
+    std::vector<char> buf_char(256);
+    int ret = iio_channel_attr_read(channel, attr_name, buf_char.data(), buf_char.size());
+    if (ret < 0) {
+        spdlog::error("Failed to read {}: {}", attr_name, std::strerror(-ret));
+        return {};
+    }
+
+    const std::string attr_value(buf_char.data(), static_cast<size_t>(ret));
+    spdlog::info("{}: {}", attr_name, attr_value);
+
+    std::istringstream iss(attr_value);
+    std::vector<double> available_freqs;
+    double frequency;
+    while (iss >> frequency) {
+        available_freqs.push_back(frequency);
+    }
+
+    return available_freqs;
+}
+
 void IMUDevice::_configure_device() {
     if (_config.sampling_frequency > 0.0) {
-        for (const auto channel : _channels) {
-            bool has_sample_freq;
-            int ret = iio_channel_attr_read_bool(channel.second, "sample_frequency_available", &has_sample_freq);
-            if (!has_sample_freq) {
-                spdlog::warn("Channel '{}' does not support sampling_frequency", channel.first);
+        for (const auto& [name, channel] : _channels) {
+            std::vector<double> available_freqs = _get_available_frequencies(channel);
+            spdlog::info("Available frequencies for channel '{}': {}", name, fmt::join(available_freqs, ", "));
+
+            const double requested_freq = _config.sampling_frequency;
+            const bool supported = std::any_of(available_freqs.begin(), available_freqs.end(),
+            [requested_freq](double value) {
+                return std::fabs(value - requested_freq) <= 1e-3;
+            });
+
+            if (!supported) {
+                spdlog::warn("Requested sampling frequency {} Hz is not supported by channel '{}'", _config.sampling_frequency, name);
+                continue;
             }
 
-            double current_freq;
-            ret = iio_channel_attr_read_double(channel.second, "sampling_frequency", &current_freq);
-            if (ret < 0) {
-                spdlog::warn("Failed to read current sampling_frequency on channel '{}': {}", channel.first, std::strerror(-ret));
-            } else {
-                spdlog::info("Current sampling_frequency on channel '{}' is {} Hz", channel.first, current_freq);
-            }
 
-            ret = iio_channel_attr_write_double(channel.second, "sampling_frequency", _config.sampling_frequency);
-            if (ret < 0) {
-                spdlog::warn("Failed to set sampling_frequency on channel '{}': {}", channel.first, std::strerror(-ret));
-            } else {
-                spdlog::info("Set sampling_frequency to {} Hz on channel '{}'", _config.sampling_frequency, channel.first);
-            }
+
+
+
+            // Write the sampling frequency to the channel attribute
+            int ret = iio_channel_attr_write_double(channel, "sampling_frequency", _config.sampling_frequency);
+            spdlog::info("Set sampling frequency for channel '{}': {} Hz (write result: {})", name, _config.sampling_frequency, ret);
         }
     }
 }
