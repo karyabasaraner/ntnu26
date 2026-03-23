@@ -28,6 +28,20 @@ uint8_t IMUModule::get_num_imus() const {
 }
 
 void IMUModule::start_imus() {
+    poll_once();
+}
+
+void IMUModule::poll_once() {
+    for (auto& device : _devices) {
+        IMUSample sample;
+        if (!device->read_latest_sample(sample)) {
+            continue;
+        }
+
+        for (const auto& [channel_name, value_si] : sample.values_si) {
+            spdlog::info("IMU sample {} channel={} value_si={}", sample.timestamp_ns, channel_name, value_si);
+        }
+    }
 }
 
 void IMUModule::stop_imus() {

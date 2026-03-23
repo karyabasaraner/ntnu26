@@ -1,7 +1,7 @@
 imus:
   - name: accelerometer
     device: "iio:device0"
-    sampling_frequency: 1600 # Hz
+    sampling_frequency: 12.5 # Hz
     scale: 0.000897
     buffer_samples: 64
     cyclic_buffer: false
@@ -11,7 +11,7 @@ imus:
       - "accel_z"
   - name: gyroscope
     device: "iio:device1"
-    sampling_frequency: 2000 # Hz
+    sampling_frequency: 100 # Hz
     scale: 0.001065
     buffer_samples: 64
     cyclic_buffer: false
