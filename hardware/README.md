@@ -133,6 +133,23 @@ and reboot.
 
 21. Apply the device tree patch by placing it into the `/boot/` dir.
 
+### BMI088 wiring
+The following connections need to be made:
+```
+IO-BOARD-V1, Label 40-pin header
+GND, GND
+SCK, I2C5_CLK
+SDI, I2C5_DAT
+INT1, GPIO9
+INT2, GPIO8
+```
+The interrupts result due to:
+```
+BMI --> Shuttle board / IO-BOARD-V1 --> Pin --> Label
+INT1 --> INT1 --> PBB0 --> GPIO9
+INT3 --> INT2 --> PBB1 --> GPIO8
+```
+
 ### BMI088 device tree overlay
 0. Some information on this can be found in the [Nvidia developer guide](https://docs.nvidia.com/jetson/archives/r36.4.4/DeveloperGuide/SD/Kernel/Bmi088ImuIioDriver.html)
 1. Ensure that the IMU is present on bus 7:
@@ -179,5 +196,5 @@ LABEL JetsonIO
 	FDT /boot/dtb/kernel_tegra234-p3737-0000+p3701-0005-nv-cam-bmi088.dtb
 	INITRD /boot/initrd
 	APPEND ${cbootargs} root=PARTUUID=dc2e6fd7-b19d-404f-acfa-bc2aa4223bc5 rw rootwait rootfstype=ext4 mminit_loglevel=4 console=ttyTCU0,115200 console=ttyAMA0,115200 firmware_class.path=/etc/firmware fbcon=map:0 nospectre_bhb video=efifb:off console=tty0
-	# OVERLAYS /boot/bmi088-overlay.dtbo /boot/tegra234-p3701-0000-p3737-0000-two-lane-ar0234.dtbo
+	OVERLAYS /boot/tegra234-p3701-0000-p3737-0000-two-lane-ar0234.dtbo
 ```

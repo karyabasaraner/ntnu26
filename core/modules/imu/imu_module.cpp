@@ -18,7 +18,6 @@ void IMUModule::_initialize_imus() {
     for (const auto& imu_config : _config.get_config().imus) {
         spdlog::info("Configuring {} {}", imu_config.name, imu_config.device);
         auto device = std::make_unique<IMUDevice>(imu_config);
-        device->start();
         _devices.push_back(std::move(device));
     }
 }
@@ -28,7 +27,10 @@ uint8_t IMUModule::get_num_imus() const {
 }
 
 void IMUModule::start_imus() {
-    poll_once();
+    for (auto& device : _devices) {
+        device->start();
+    }
+    spdlog::info("Started {} IMU devices", _devices.size());
 }
 
 void IMUModule::poll_once() {

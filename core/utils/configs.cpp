@@ -47,7 +47,7 @@ void declare_config(IMUConfig& config) {
     config::field(config.sampling_frequency, "sampling_frequency", "Target sampling frequency in Hz");
     config::field(config.scale, "scale", "Scale factor for the IMU readings");
     config::field(config.buffer_samples, "buffer_samples", "Number of samples in the kernel IIO buffer");
-    config::field(config.cyclic_buffer, "cyclic_buffer", "Create cyclic buffer if supported by the driver");
+    config::field(config.watermark_samples, "watermark_samples", "Number of samples to trigger buffer watermark interrupt");
     config::field(config.channels, "channels", "List of channel IDs to enable for each sample");
 }
 
