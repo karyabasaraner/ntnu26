@@ -16,6 +16,7 @@ public:
 
     uint8_t get_num_imus() const;
     void start_imus();
+    void poll_once();
     void stop_imus();
 
 private:
