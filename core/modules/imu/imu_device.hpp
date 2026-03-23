@@ -28,6 +28,13 @@ struct IMUSample {
     std::unordered_map<std::string, double> values_si;
 };
 
+// struct ChannelCursor {
+//     const std::string* name;
+//     struct iio_channel* channel;
+//     const char* first;
+// };
+
+
 class IMUDevice {
 public:
     explicit IMUDevice(IMUConfig config);
@@ -41,28 +48,31 @@ public:
     void start();
     void stop();
     bool is_running() const noexcept;
-    bool read_latest_sample(IMUSample& sample);
 
 private:
     IMUConfig _config;
     std::atomic<bool> _running{false};
+    std::thread _worker;
     struct iio_context* _context{nullptr};
     struct iio_device* _device{nullptr};
     struct iio_buffer* _buffer{nullptr};
+    int _buffer_poll_fd{-1};
     struct iio_channel* _timestamp_channel{nullptr};
     std::unordered_map<std::string, struct iio_channel*> _channels;
     std::unordered_map<std::string, double> _channel_scales;
     std::unordered_map<std::string, double> _channel_offsets;
+    mutable std::mutex _sample_mutex;
+    IMUSample _latest_sample;
+    bool _has_latest_sample{false};
 
     bool _open_context();
-    void _prepare_channels();
-    void _configure_device();
     bool _setup_buffer();
+    size_t _read_buffer_sample(IMUSample& latest_sample);
+    void _capture_loop();
+    void _configure_device();
     void _destroy_resources();
-
+    void _prepare_channels();
     void _set_channel_attr(struct iio_channel* channel, const std::string& attr_name, double value);
-    struct iio_channel* _find_channel_with_fallback(const std::string& configured_name, std::string& resolved_name) const;
-    double _convert_channel_to_si(const std::string& configured_name, struct iio_channel* channel, const void* raw_ptr) const;
 };
 
 } // namespace core

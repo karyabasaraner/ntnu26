@@ -33,19 +33,6 @@ void IMUModule::start_imus() {
     spdlog::info("Started {} IMU devices", _devices.size());
 }
 
-void IMUModule::poll_once() {
-    for (auto& device : _devices) {
-        IMUSample sample;
-        if (!device->read_latest_sample(sample)) {
-            continue;
-        }
-
-        for (const auto& [channel_name, value_si] : sample.values_si) {
-            spdlog::info("IMU sample {} channel={} value_si={}", sample.timestamp_ns, channel_name, value_si);
-        }
-    }
-}
-
 void IMUModule::stop_imus() {
     for (auto& device : _devices) {
         device->stop();
