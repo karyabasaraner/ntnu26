@@ -46,6 +46,8 @@ void declare_config(IMUConfig& config) {
     config::field(config.device, "device", "IIO device identifier (e.g., iio:device0)");
     config::field(config.sampling_frequency, "sampling_frequency", "Target sampling frequency in Hz");
     config::field(config.scale, "scale", "Scale factor for the IMU readings");
+    config::field(config.buffer_samples, "buffer_samples", "Number of samples in the kernel IIO buffer");
+    config::field(config.cyclic_buffer, "cyclic_buffer", "Create cyclic buffer if supported by the driver");
     config::field(config.channels, "channels", "List of channel IDs to enable for each sample");
 }
 

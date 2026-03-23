@@ -33,6 +33,11 @@ void IMUDevice::start() {
 
     _prepare_channels();
     _configure_device();
+
+    if (!_setup_buffer()) {
+        _destroy_resources();
+        _running.store(false, std::memory_order_release);
+    }
 }
 
 void IMUDevice::stop() {
@@ -40,6 +45,8 @@ void IMUDevice::stop() {
     if (!_running.compare_exchange_strong(expected, false)) {
         return;
     }
+
+    _destroy_resources();
 }
 
 bool IMUDevice::_open_context() {
@@ -80,6 +87,19 @@ void IMUDevice::_prepare_channels() {
         // Store channel and name for later use
         _channels[name] = channel;
     }
+
+    // Enable timestamp channel so buffered samples carry acquisition time.
+    struct iio_channel* timestamp_channel = iio_device_find_channel(_device, "timestamp", false);
+    if (timestamp_channel == nullptr) {
+        timestamp_channel = iio_device_find_channel(_device, "in_timestamp", false);
+    }
+
+    if (timestamp_channel != nullptr) {
+        iio_channel_enable(timestamp_channel);
+        spdlog::info("Enabled timestamp channel for {}", _config.device);
+    } else {
+        spdlog::warn("Timestamp channel not found for {}", _config.device);
+    }
 }
 
 void IMUDevice::_set_channel_attr(struct iio_channel* channel, const std::string& attr_name, double value) {
@@ -97,6 +117,36 @@ void IMUDevice::_configure_device() {
             _set_channel_attr(channel, "sampling_frequency", _config.sampling_frequency);
             _set_channel_attr(channel, "scale", _config.scale);
         }
+    }
+}
+
+bool IMUDevice::_setup_buffer() {
+    if (_buffer != nullptr) {
+        return true;
+    }
+
+    _buffer = iio_device_create_buffer(_device, _config.buffer_samples, _config.cyclic_buffer);
+    if (_buffer == nullptr) {
+        spdlog::error("Failed to create IIO buffer for {} (samples={}, cyclic={}): {}", _config.device, _config.buffer_samples, _config.cyclic_buffer, std::strerror(errno));
+        return false;
+    }
+
+    spdlog::info("Created IIO buffer for {} (samples={}, cyclic={})", _config.device, _config.buffer_samples, _config.cyclic_buffer);
+    return true;
+}
+
+void IMUDevice::_destroy_resources() {
+    if (_buffer != nullptr) {
+        iio_buffer_destroy(_buffer);
+        _buffer = nullptr;
+    }
+
+    _channels.clear();
+    _device = nullptr;
+
+    if (_context != nullptr) {
+        iio_context_destroy(_context);
+        _context = nullptr;
     }
 }
 
