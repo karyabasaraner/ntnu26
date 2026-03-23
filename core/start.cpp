@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
         // Starting IMU
         spdlog::info("Starting IMUModule with config: {}", config_path);
         core::IMUModule imus(config_path);
-        imus.start();
+        imus.start_imus();
 
         spdlog::info("Service running. Press Ctrl+C to stop.");
 
@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
         }
 
         spdlog::info("Stopping IMU...");
-        imus.stop();
+        imus.stop_imus();
 
         spdlog::info("Stopping cameras...");
         cameras.stop_cameras();

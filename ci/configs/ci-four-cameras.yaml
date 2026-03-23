@@ -51,6 +51,21 @@ cameras:
     req_buffer_count: 4
     transforms:
       - name: UYVY2RGB
+imus:
+  - name: accelerometer
+    device: "iio:device0"
+    sampling_frequency: 1000 # Hz
+    buffer_samples: 128
+    cyclic_buffer: true
+    channels:
+      - "accel_x"
+  - name: gyroscope
+    device: "iio:device1"
+    sampling_frequency: 1000 # Hz
+    buffer_samples: 128
+    cyclic_buffer: true
+    channels:
+      - "accel_x"
 shared_memory:
   - name: front_left
     size_per_frame: 2764800 # 1280*720*3 bytes
