@@ -3,8 +3,8 @@ imus:
     device: "iio:device0"
     sampling_frequency: 1600 # Hz
     scale: 0.000897
-    buffer_samples: 128
-    cyclic_buffer: true
+    buffer_samples: 64
+    cyclic_buffer: false
     channels:
       - "accel_x"
       - "accel_y"
@@ -13,6 +13,8 @@ imus:
     device: "iio:device1"
     sampling_frequency: 2000 # Hz
     scale: 0.001065
+    buffer_samples: 64
+    cyclic_buffer: false
     channels:
       - "anglvel_x"
       - "anglvel_y"

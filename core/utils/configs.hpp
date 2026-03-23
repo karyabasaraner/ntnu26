@@ -42,6 +42,8 @@ struct IMUConfig {
     std::string device;
     double sampling_frequency;
     double scale;
+    size_t buffer_samples;
+    bool cyclic_buffer;
     std::vector<std::string> channels;
 };
 

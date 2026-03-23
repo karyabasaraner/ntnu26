@@ -42,11 +42,14 @@ private:
     std::atomic<bool> _running{false};
     struct iio_context* _context{nullptr};
     struct iio_device* _device{nullptr};
+    struct iio_buffer* _buffer{nullptr};
     std::unordered_map<std::string, struct iio_channel*> _channels;
 
     bool _open_context();
     void _prepare_channels();
     void _configure_device();
+    bool _setup_buffer();
+    void _destroy_resources();
 
     void _set_channel_attr(struct iio_channel* channel, const std::string& attr_name, double value);
 };
