@@ -36,6 +36,7 @@ void IMUDevice::start() {
     }
 
     _prepare_channels();
+    _log_device_attrs();
     _configure_device();
 }
 
@@ -82,18 +83,64 @@ void IMUDevice::_prepare_channels() {
         iio_channel_enable(channel);
 
         // Store channel and name for later use
-        _channels[name] = std::make_pair(index, channel);
+        _channels[name] = channel;
     }
 }
 
 void IMUDevice::_configure_device() {
     if (_config.sampling_frequency > 0.0) {
-        int ret = iio_device_attr_write_double(_device, "sampling_frequency", _config.sampling_frequency);
-        if (ret < 0) {
-            ret = -ret;
-            spdlog::warn("Failed to set sampling_frequency on {}: {}", _config.device, std::strerror(ret));
-        } else {
-            spdlog::info("Target IMU sampling frequency: {} Hz", _config.sampling_frequency);
+        for (const auto channel : _channels) {
+            bool has_sample_freq;
+            int ret = iio_channel_attr_read_bool(channel.second, "sample_frequency_available", &has_sample_freq);
+            if (!has_sample_freq) {
+                spdlog::warn("Channel '{}' does not support sampling_frequency", channel.first);
+            }
+
+            double current_freq;
+            ret = iio_channel_attr_read_double(channel.second, "sampling_frequency", &current_freq);
+            if (ret < 0) {
+                spdlog::warn("Failed to read current sampling_frequency on channel '{}': {}", channel.first, std::strerror(-ret));
+            } else {
+                spdlog::info("Current sampling_frequency on channel '{}' is {} Hz", channel.first, current_freq);
+            }
+
+            ret = iio_channel_attr_write_double(channel.second, "sampling_frequency", _config.sampling_frequency);
+            if (ret < 0) {
+                spdlog::warn("Failed to set sampling_frequency on channel '{}': {}", channel.first, std::strerror(-ret));
+            } else {
+                spdlog::info("Set sampling_frequency to {} Hz on channel '{}'", _config.sampling_frequency, channel.first);
+            }
+        }
+    }
+}
+
+void IMUDevice::_log_device_attrs() {
+    const unsigned int device_attr_count = iio_device_get_attrs_count(_device);
+    spdlog::info("{} has {} device attribute(s)", _config.device, device_attr_count);
+    for (unsigned int idx = 0; idx < device_attr_count; ++idx) {
+        const char* attr = iio_device_get_attr(_device, idx);
+        if (attr != nullptr) {
+            spdlog::info("Device attribute: {}", attr);
+        }
+    }
+
+    for (const auto chn : _channels) {
+        struct iio_channel* channel = chn.second;
+        if (channel == nullptr) {
+            continue;
+        }
+
+        const unsigned int channel_attr_count = iio_channel_get_attrs_count(channel);
+        if (channel_attr_count == 0) {
+            continue;
+        }
+
+        spdlog::info("Channel {} has {} attribute(s)", chn.first, channel_attr_count);
+        for (unsigned int attr_idx = 0; attr_idx < channel_attr_count; ++attr_idx) {
+            const char* attr = iio_channel_get_attr(channel, attr_idx);
+            if (attr != nullptr) {
+                spdlog::info("Channel attribute: {}", attr);
+            }
         }
     }
 }
