@@ -1,1 +1,3 @@
-SUBSYSTEM=="iio", KERNEL=="iio:device[0-9]*", MODE="0660", GROUP="iio"
+SUBSYSTEM=="iio", KERNEL=="iio:device[0-9]*", MODE="0660", GROUP="iio", \
+	RUN+="/bin/sh -c '/bin/chgrp iio /sys%p/in_*_sampling_frequency /sys%p/in_*_scale /sys%p/buffer/* /sys%p/buffer0/* /sys%p/scan_elements/*_en 2>/dev/null || true'", \
+	RUN+="/bin/sh -c '/bin/chmod g+rw /sys%p/in_*_sampling_frequency /sys%p/in_*_scale /sys%p/buffer/* /sys%p/buffer0/* /sys%p/scan_elements/*_en 2>/dev/null || true'"

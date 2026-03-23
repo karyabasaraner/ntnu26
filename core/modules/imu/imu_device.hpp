@@ -47,9 +47,8 @@ private:
     bool _open_context();
     void _prepare_channels();
     void _configure_device();
-    void _log_device_attrs();
 
-    std::vector<double> _get_available_frequencies(struct iio_channel* channel);
+    void _set_channel_attr(struct iio_channel* channel, const std::string& attr_name, double value);
 };
 
 } // namespace core

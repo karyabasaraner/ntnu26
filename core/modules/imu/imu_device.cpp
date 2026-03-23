@@ -17,14 +17,6 @@ IMUDevice::IMUDevice(IMUConfig config) : _config(std::move(config)) {}
 
 IMUDevice::~IMUDevice() {
     stop();
-    // if (_buffer != nullptr) {
-    //     iio_buffer_destroy(_buffer);
-    //     _buffer = nullptr;
-    // }
-    // if (_context != nullptr) {
-    //     iio_context_destroy(_context);
-    //     _context = nullptr;
-    // }
 }
 
 void IMUDevice::start() {
@@ -40,7 +32,6 @@ void IMUDevice::start() {
     }
 
     _prepare_channels();
-    _log_device_attrs();
     _configure_device();
 }
 
@@ -91,83 +82,20 @@ void IMUDevice::_prepare_channels() {
     }
 }
 
-std::vector<double> IMUDevice::_get_available_frequencies(struct iio_channel* channel) {
-    const char* attr_name = "sampling_frequency_available";
-    std::vector<char> buf_char(256);
-    int ret = iio_channel_attr_read(channel, attr_name, buf_char.data(), buf_char.size());
+void IMUDevice::_set_channel_attr(struct iio_channel* channel, const std::string& attr_name, double value) {
+    const int ret = iio_channel_attr_write_double(channel, attr_name.c_str(), value);
     if (ret < 0) {
-        spdlog::error("Failed to read {}: {}", attr_name, std::strerror(-ret));
-        return {};
+        spdlog::error("Failed to set {} to {}: {}", attr_name, value, std::strerror(-ret));
     }
-
-    const std::string attr_value(buf_char.data(), static_cast<size_t>(ret));
-    spdlog::info("{}: {}", attr_name, attr_value);
-
-    std::istringstream iss(attr_value);
-    std::vector<double> available_freqs;
-    double frequency;
-    while (iss >> frequency) {
-        available_freqs.push_back(frequency);
-    }
-
-    return available_freqs;
+    spdlog::info("Set {}: {}", attr_name, value);
 }
 
 void IMUDevice::_configure_device() {
     if (_config.sampling_frequency > 0.0) {
         for (const auto& [name, channel] : _channels) {
-            std::vector<double> available_freqs = _get_available_frequencies(channel);
-            spdlog::info("Available frequencies for channel '{}': {}", name, fmt::join(available_freqs, ", "));
-
-            const double requested_freq = _config.sampling_frequency;
-            const bool supported = std::any_of(available_freqs.begin(), available_freqs.end(),
-            [requested_freq](double value) {
-                return std::fabs(value - requested_freq) <= 1e-3;
-            });
-
-            if (!supported) {
-                spdlog::warn("Requested sampling frequency {} Hz is not supported by channel '{}'", _config.sampling_frequency, name);
-                continue;
-            }
-
-
-
-
-
-            // Write the sampling frequency to the channel attribute
-            int ret = iio_channel_attr_write_double(channel, "sampling_frequency", _config.sampling_frequency);
-            spdlog::info("Set sampling frequency for channel '{}': {} Hz (write result: {})", name, _config.sampling_frequency, ret);
-        }
-    }
-}
-
-void IMUDevice::_log_device_attrs() {
-    const unsigned int device_attr_count = iio_device_get_attrs_count(_device);
-    spdlog::info("{} has {} device attribute(s)", _config.device, device_attr_count);
-    for (unsigned int idx = 0; idx < device_attr_count; ++idx) {
-        const char* attr = iio_device_get_attr(_device, idx);
-        if (attr != nullptr) {
-            spdlog::info("Device attribute: {}", attr);
-        }
-    }
-
-    for (const auto chn : _channels) {
-        struct iio_channel* channel = chn.second;
-        if (channel == nullptr) {
-            continue;
-        }
-
-        const unsigned int channel_attr_count = iio_channel_get_attrs_count(channel);
-        if (channel_attr_count == 0) {
-            continue;
-        }
-
-        spdlog::info("Channel {} has {} attribute(s)", chn.first, channel_attr_count);
-        for (unsigned int attr_idx = 0; attr_idx < channel_attr_count; ++attr_idx) {
-            const char* attr = iio_channel_get_attr(channel, attr_idx);
-            if (attr != nullptr) {
-                spdlog::info("Channel attribute: {}", attr);
-            }
+            spdlog::info("Configuring channel {}", name);
+            _set_channel_attr(channel, "sampling_frequency", _config.sampling_frequency);
+            _set_channel_attr(channel, "scale", _config.scale);
         }
     }
 }
