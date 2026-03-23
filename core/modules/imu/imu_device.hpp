@@ -37,41 +37,16 @@ public:
     void stop();
     bool is_running() const noexcept;
 
-    std::vector<double> latest_sample() const;
-    std::vector<std::string> channel_names() const;
-    std::chrono::steady_clock::time_point last_sample_time() const;
-
 private:
+    IMUConfig _config;
+    std::atomic<bool> _running{false};
+    struct iio_context* _context{nullptr};
+    struct iio_device* _device{nullptr};
+    std::unordered_map<std::string, std::pair<int64_t, struct iio_channel*>> _channels;
+
     bool _open_context();
     void _prepare_channels();
     void _configure_device();
-    void _create_buffer();
-    void _run();
-    void _publish_sample();
-
-    static ssize_t _sample_callback(const struct iio_channel* chn, void* src, size_t len,
-                                     void* user_data);
-    ssize_t _handle_sample(const struct iio_channel* chn, void* src, size_t len);
-
-    IMUConfig _config;
-    struct iio_context* _context{nullptr};
-    struct iio_device* _device{nullptr};
-    struct iio_buffer* _buffer{nullptr};
-
-    std::vector<double> _working_sample;
-    std::vector<double> _latest_sample;
-    std::vector<std::string> _channel_names;
-    std::unordered_map<const struct iio_channel*, size_t> _channel_index;
-    size_t _channels_per_frame{0};
-
-    mutable std::mutex _sample_mutex;
-    std::chrono::steady_clock::time_point _last_sample_time{};
-    mutable std::chrono::steady_clock::time_point _last_log_time{};
-    std::atomic<size_t> _samples_since_last_log{0};
-
-    std::thread _reader_thread;
-    std::atomic<bool> _running{false};
-    size_t _channels_seen{0};
 };
 
 } // namespace core

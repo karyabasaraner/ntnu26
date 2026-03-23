@@ -11,9 +11,7 @@
 namespace core {
 
 CameraModule::CameraModule(const std::string& config_path) {
-    // TODO(MJ): Error handling for config?
     _config.load(config_path);
-
     _initialize_cameras();
 }
 

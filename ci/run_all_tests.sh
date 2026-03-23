@@ -24,15 +24,38 @@ cmake --build build
 # Initialize error code
 err=0
 
-# Find and run all test_ executables in the build directory, excluding config_utilities
-while read -r testfile; do
+# Collect the tests we intend to execute; optionally run a single requested test
+test_request="$1"
+common_filters=(
+    ! -path '*/config_utilities/*'
+    ! -path '*/config_utilities-*/*'
+)
+tests=()
+if [[ -n "${test_request}" ]]; then
+    if [[ "${test_request}" == */* ]]; then
+        tests=("${test_request}")
+    else
+        mapfile -t tests < <(
+            find build -type f -executable -name "${test_request}" "${common_filters[@]}"
+        )
+    fi
+else
+    mapfile -t tests < <(
+        find build -type f -executable -name 'test_*' "${common_filters[@]}"
+    )
+fi
+
+# Run the selected tests
+tests_run=0
+for testfile in "${tests[@]}"; do
+    tests_run=$((tests_run + 1))
     echo "Running $testfile"
     "$testfile" || err=1
-done < <(
-    find build -type f -executable -name 'test_*' \
-        ! -path '*/config_utilities/*' \
-        ! -path '*/config_utilities-*/*'
-)
+done
+if [[ $tests_run -eq 0 ]]; then
+    echo "No matching tests found." >&2
+    err=1
+fi
 
 # Remove the mocked cameras
 sudo modprobe -r vivid
