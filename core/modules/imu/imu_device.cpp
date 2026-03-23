@@ -1,16 +1,17 @@
 #include "imu_device.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <cerrno>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <iio.h>
+#include <poll.h>
+#include <spdlog/spdlog.h>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
-
-#include <iio.h>
-#include <spdlog/spdlog.h>
 
 namespace core {
 
@@ -38,13 +39,25 @@ void IMUDevice::start() {
     if (!_setup_buffer()) {
         _destroy_resources();
         _running.store(false, std::memory_order_release);
+        return;
     }
+
+    _worker = std::thread(&IMUDevice::_capture_loop, this);
 }
 
 void IMUDevice::stop() {
     bool expected = true;
     if (!_running.compare_exchange_strong(expected, false)) {
         return;
+    }
+
+    if (_buffer != nullptr) {
+        // Wake any blocking refill so the worker can exit promptly.
+        iio_buffer_cancel(_buffer);
+    }
+
+    if (_worker.joinable()) {
+        _worker.join();
     }
 
     _destroy_resources();
@@ -131,60 +144,82 @@ void IMUDevice::_configure_device() {
     }
 }
 
-bool IMUDevice::read_latest_sample(IMUSample& sample) {
-    if (!is_running()) {
-        spdlog::warn("Not running!");
-        return false;
-    }
+void IMUDevice::_capture_loop() {
+    while (_running.load(std::memory_order_acquire)) {
+        if (_buffer_poll_fd >= 0) {
+            struct pollfd pfd{};
+            pfd.fd = _buffer_poll_fd;
+            pfd.events = POLLIN;
+            const int poll_ret = poll(&pfd, 1, 250); // 250 ms
+            if (poll_ret < 0) {
+                spdlog::warn("Poll error on IIO buffer for {}: {}", _config.device, std::strerror(errno));
+                continue;
 
+            } else if (poll_ret == 0) {
+                // This is ok
+                continue;
+            }
+        }
+
+        IMUSample latest_batch_sample{};
+        _read_buffer_sample(latest_batch_sample);
+
+    }
+}
+
+size_t IMUDevice::_read_buffer_sample(IMUSample& sample) {
+    size_t read = 0;
+
+    // 0. Check if buffer is initialized
     if (_buffer == nullptr) {
         spdlog::error("IIO buffer not initialized for {}", _config.device);
         return false;
     }
 
+    // 1. Refill buffer with new samples from device
     const ssize_t refill_ret = iio_buffer_refill(_buffer);
-    if (refill_ret < 0) {
+    if (refill_ret <= 0) {
         spdlog::warn("Failed to refill IIO buffer for {}: {}", _config.device, std::strerror(-refill_ret));
-        return false;
+        return read;
     }
 
-    const char* const buffer_end = static_cast<const char*>(iio_buffer_end(_buffer));
+    // 2. Get the buffer step size
     const ptrdiff_t step = iio_buffer_step(_buffer);
-    if (step <= 0) {
-        spdlog::error("Invalid buffer step {} for {}", step, _config.device);
-        return false;
-    }
+    const size_t num_samples_in_buffer = static_cast<size_t>(refill_ret) / static_cast<size_t>(step);
 
-    sample = IMUSample{};
-
-    if (_timestamp_channel != nullptr) {
-        const char* ptr = static_cast<const char*>(iio_buffer_first(_buffer, _timestamp_channel));
-        if (ptr < buffer_end) {
-            const char* last = ptr;
-            for (const char* cur = ptr; cur < buffer_end; cur += step) {
-                last = cur;
-            }
-            int64_t timestamp_value = 0;
-            iio_channel_convert(_timestamp_channel, &timestamp_value, last);
-            sample.timestamp_ns = timestamp_value;
-        }
-    }
-
-    for (const auto& [name, channel] : _channels) {
-        const char* ptr = static_cast<const char*>(iio_buffer_first(_buffer, channel));
-        if (ptr >= buffer_end) {
+    // 3. Iterate over samples in buffer and decode them
+    for (size_t index = 0; index < num_samples_in_buffer; ++index) {
+        // 3a. Decode timestamp
+        const char* timestamp_ptr = static_cast<const char*>(iio_buffer_first(_buffer, _timestamp_channel)) + static_cast<ptrdiff_t>(index) * step;
+        if (timestamp_ptr >= static_cast<const char*>(iio_buffer_end(_buffer))) {
+            spdlog::warn("Timestamp pointer out of buffer bounds for sample {}", index);
             continue;
         }
 
-        const char* last = ptr;
-        for (const char* cur = ptr; cur < buffer_end; cur += step) {
-            last = cur;
-        }
+        int64_t timestamp_value = 0;
+        iio_channel_convert(_timestamp_channel, &timestamp_value, timestamp_ptr);
+        spdlog::info("Sample {} timestamp: {}", index, timestamp_value);
 
-        sample.values_si[name] = _convert_channel_to_si(name, channel, last);
+        // 3b. Decode data channels
+        for (const auto& [name, channel] : _channels) {
+            int64_t value = 0;
+            const char* channel_ptr = static_cast<const char*>(iio_buffer_first(_buffer, channel)) + static_cast<ptrdiff_t>(index) * step;
+            if (channel_ptr >= static_cast<const char*>(iio_buffer_end(_buffer))) {
+                spdlog::warn("Channel {} pointer out of buffer bounds for sample {}", name, index);
+                continue;
+            }
+
+            iio_channel_convert(channel, &value, channel_ptr);
+            spdlog::info("Sample {} channel {} raw value: {}", index, name, value);
+
+            // Convert to SI units using scale and offset
+            const double value_si = (static_cast<double>(value) + _channel_offsets[name]) * _channel_scales[name];
+            // spdlog::info("Sample {} channel {} SI value: {}", index, name, value_si);
+        }
+        read++;
     }
 
-    return !sample.values_si.empty();
+    return read;
 }
 
 bool IMUDevice::_setup_buffer() {
@@ -197,6 +232,7 @@ bool IMUDevice::_setup_buffer() {
         return false;
     }
 
+    // Set watermark
     const size_t watermark_samples = _config.watermark_samples;
     const int watermark_ret = iio_device_buffer_attr_write_longlong(_device, "watermark", watermark_samples);
     if (watermark_ret < 0) {
@@ -212,9 +248,18 @@ bool IMUDevice::_setup_buffer() {
         return false;
     }
 
+    // Get the poll fd for the buffer so we can wait for new samples efficiently
+    _buffer_poll_fd = iio_buffer_get_poll_fd(_buffer);
+    if (_buffer_poll_fd < 0) {
+        spdlog::warn("Could not get poll fd for {} buffer, falling back to refill loop", _config.device);
+    }
+
+    // Set blocking mode
     const int blocking_mode_ret = iio_buffer_set_blocking_mode(_buffer, true);
     if (blocking_mode_ret < 0) {
         spdlog::warn("Failed to set blocking mode for {} buffer: {}", _config.device, std::strerror(-blocking_mode_ret));
+    } else {
+        spdlog::info("Set blocking mode for {} buffer", _config.device);
     }
 
     spdlog::info("Created IIO buffer for {} (samples={})", _config.device, buffer_samples);
@@ -226,6 +271,7 @@ void IMUDevice::_destroy_resources() {
         iio_buffer_destroy(_buffer);
         _buffer = nullptr;
     }
+    _buffer_poll_fd = -1;
 
     _channels.clear();
     _channel_scales.clear();
@@ -233,29 +279,16 @@ void IMUDevice::_destroy_resources() {
     _timestamp_channel = nullptr;
     _device = nullptr;
 
+    {
+        std::lock_guard<std::mutex> lock(_sample_mutex);
+        _latest_sample = IMUSample{};
+        _has_latest_sample = false;
+    }
+
     if (_context != nullptr) {
         iio_context_destroy(_context);
         _context = nullptr;
     }
-}
-
-double IMUDevice::_convert_channel_to_si(const std::string& configured_name, struct iio_channel* channel, const void* raw_ptr) const {
-    int64_t host_value = 0;
-    iio_channel_convert(channel, &host_value, raw_ptr);
-
-    double scale = _config.scale;
-    const auto scale_it = _channel_scales.find(configured_name);
-    if (scale_it != _channel_scales.end()) {
-        scale = scale_it->second;
-    }
-
-    double offset = 0.0;
-    const auto offset_it = _channel_offsets.find(configured_name);
-    if (offset_it != _channel_offsets.end()) {
-        offset = offset_it->second;
-    }
-
-    return (static_cast<double>(host_value) + offset) * scale;
 }
 
 } // namespace core

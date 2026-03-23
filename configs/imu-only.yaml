@@ -1,21 +1,21 @@
 imus:
   - name: accelerometer
     device: "iio:device0"
-    sampling_frequency: 12.5 # Hz
+    sampling_frequency: 200 # Hz
     scale: 0.000897
-    buffer_samples: 256
-    watermark_samples: 256
+    buffer_samples: 128
+    watermark_samples: 128
     channels:
       - "accel_x"
       - "accel_y"
       - "accel_z"
-  - name: gyroscope
-    device: "iio:device1"
-    sampling_frequency: 100 # Hz
-    scale: 0.001065
-    buffer_samples: 256
-    watermark_samples: 256
-    channels:
-      - "anglvel_x"
-      - "anglvel_y"
-      - "anglvel_z"
+  # - name: gyroscope
+  #   device: "iio:device1"
+  #   sampling_frequency: 100 # Hz
+  #   scale: 0.001065
+  #   buffer_samples: 256
+  #   watermark_samples: 256
+  #   channels:
+  #     - "anglvel_x"
+  #     - "anglvel_y"
+  #     - "anglvel_z"
