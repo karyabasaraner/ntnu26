@@ -42,11 +42,12 @@ private:
     std::atomic<bool> _running{false};
     struct iio_context* _context{nullptr};
     struct iio_device* _device{nullptr};
-    std::unordered_map<std::string, std::pair<int64_t, struct iio_channel*>> _channels;
+    std::unordered_map<std::string, struct iio_channel*> _channels;
 
     bool _open_context();
     void _prepare_channels();
     void _configure_device();
+    void _log_device_attrs();
 };
 
 } // namespace core

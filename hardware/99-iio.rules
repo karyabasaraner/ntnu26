@@ -1,0 +1,1 @@
+SUBSYSTEM=="iio", KERNEL=="iio:device[0-9]*", MODE="0660", GROUP="iio"
