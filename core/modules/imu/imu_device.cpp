@@ -197,19 +197,18 @@ bool IMUDevice::_setup_buffer() {
         return false;
     }
 
-    const size_t sample_count = _config.buffer_samples > 0 ? _config.buffer_samples : 64;
-
-    const long long watermark = 1;
-    const int watermark_ret = iio_device_buffer_attr_write_longlong(_device, "watermark", watermark);
+    const size_t watermark_samples = _config.watermark_samples;
+    const int watermark_ret = iio_device_buffer_attr_write_longlong(_device, "watermark", watermark_samples);
     if (watermark_ret < 0) {
-        spdlog::warn("Failed to set buffer watermark={} for {}: {}", watermark, _config.device, std::strerror(-watermark_ret));
+        spdlog::warn("Failed to set buffer watermark={} for {}: {}", watermark_samples, _config.device, std::strerror(-watermark_ret));
     } else {
-        spdlog::info("Set buffer watermark={} for {}", watermark, _config.device);
+        spdlog::info("Set buffer watermark={} for {}", watermark_samples, _config.device);
     }
 
-    _buffer = iio_device_create_buffer(_device, sample_count, _config.cyclic_buffer);
+    const size_t buffer_samples = _config.buffer_samples;
+    _buffer = iio_device_create_buffer(_device, buffer_samples, false);
     if (_buffer == nullptr) {
-        spdlog::error("Failed to create IIO buffer for {} (samples={}, cyclic={}): {}", _config.device, sample_count, _config.cyclic_buffer, std::strerror(errno));
+        spdlog::error("Failed to create IIO buffer for {} (samples={}): {}", _config.device, buffer_samples, std::strerror(errno));
         return false;
     }
 
@@ -218,7 +217,7 @@ bool IMUDevice::_setup_buffer() {
         spdlog::warn("Failed to set blocking mode for {} buffer: {}", _config.device, std::strerror(-blocking_mode_ret));
     }
 
-    spdlog::info("Created IIO buffer for {} (samples={}, cyclic={})", _config.device, sample_count, _config.cyclic_buffer);
+    spdlog::info("Created IIO buffer for {} (samples={})", _config.device, buffer_samples);
     return true;
 }
 

@@ -43,7 +43,7 @@ struct IMUConfig {
     double sampling_frequency;
     double scale;
     size_t buffer_samples;
-    bool cyclic_buffer;
+    size_t watermark_samples;
     std::vector<std::string> channels;
 };
 
