@@ -2,7 +2,6 @@
 #include <cstdint>
 #include <memory>
 #include <spdlog/spdlog.h>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -10,8 +9,8 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 
+#include "core/modules/shared_memory/client/reader.hpp"
 #include "core/modules/shared_memory/utils.hpp"
-#include "core/modules/shared_memory/reader.hpp"
 #include "core/utils/configs.hpp"
 #include "nanobind/nb_defs.h"
 

@@ -1,9 +1,8 @@
 #include <gtest/gtest.h>
 #include <string>
 
-#include "../client.hpp"
+#include "../client/client.hpp"
 #include "../master.hpp"
-#include "configs.hpp"
 
 const std::string TEST_CONFIG_PATH = "ci/configs/ci-four-cameras.yaml";
 

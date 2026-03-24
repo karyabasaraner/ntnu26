@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "../utils/configs.hpp"
-#include "../shared_memory/writer.hpp"
+#include "../shared_memory/client/writer.hpp"
 
 extern "C" {
 struct iio_context;
