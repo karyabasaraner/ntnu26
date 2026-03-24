@@ -21,7 +21,7 @@
 
 namespace core {
 
-IMUDevice::IMUDevice(IMUConfig config) : _config(std::move(config)), _shdict_writer(_config.name, _config.writer[0]) {}
+IMUDevice::IMUDevice(IMUConfig config) : _config(std::move(config)), _shdict_writer(_config.name, _config.writer) {}
 
 IMUDevice::~IMUDevice() {
     stop();

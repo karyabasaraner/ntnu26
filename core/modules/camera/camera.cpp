@@ -30,7 +30,7 @@ const std::unordered_map<std::string, uint32_t> Camera::FOURCC_FORMATS = {
     {"UYVY", V4L2_PIX_FMT_UYVY}
 };
 
-Camera::Camera(CameraConfig config) : _config(std::move(config)), _shdict_writer(_config.name, _config.writer[0]) {
+Camera::Camera(CameraConfig config) : _config(std::move(config)), _shdict_writer(_config.name, _config.writer) {
     _open_device();
 
     if (!is_valid()) {
@@ -124,8 +124,8 @@ bool Camera::_configure() const {
     struct v4l2_format fmt{};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    fmt.fmt.pix.width = _config.writer[0].width;
-    fmt.fmt.pix.height = _config.writer[0].height;
+    fmt.fmt.pix.width = _config.writer.width;
+    fmt.fmt.pix.height = _config.writer.height;
     fmt.fmt.pix.pixelformat = FOURCC_FORMATS.at(_config.format);
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
 
