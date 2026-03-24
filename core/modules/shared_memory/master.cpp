@@ -56,7 +56,7 @@ void SharedDictMaster::_initialize_shm() {
     size_t total_size = offsetof(Layout, buffers);
     for (const auto& cfg : rb_config) {
         // Storage for one buffer header + N frames (each frame header + payload)
-        const size_t frame_storage = offsetof(ImageFrame, data) + static_cast<size_t>(cfg.size_per_frame);
+        const size_t frame_storage = offsetof(DataFrame, data) + static_cast<size_t>(cfg.size_per_frame);
         const size_t buffer_storage = offsetof(Buffer, frames) + static_cast<size_t>(cfg.num_frames) * frame_storage;
 
         // Track size_per_buffer for logging/diagnostics; last value kept
@@ -136,7 +136,7 @@ void SharedDictMaster::_initialize_metadata() {
         buffer->size_per_frame = cfg.size_per_frame;
         buffer->offset = static_cast<uint64_t>(current - base);
 
-        const size_t frame_storage = offsetof(ImageFrame, data) + static_cast<size_t>(buffer->size_per_frame);
+        const size_t frame_storage = offsetof(DataFrame, data) + static_cast<size_t>(buffer->size_per_frame);
         const size_t buffer_storage = offsetof(Buffer, frames) + static_cast<size_t>(buffer->num_frames) * frame_storage;
 
         // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)

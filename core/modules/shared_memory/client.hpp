@@ -13,7 +13,7 @@ namespace core {
 
 class SharedDictClient {
 public:
-    explicit SharedDictClient(CameraConfig config={});
+    explicit SharedDictClient(std::string name);
     ~SharedDictClient();
 
     SharedDictClient(const SharedDictClient&) = delete;
@@ -26,19 +26,17 @@ public:
 
     bool is_ready() const;
     Buffer* get_buffer() const;
-    CameraConfig get_config() const { return _config; }
-    ImageFrame* get_frame_by_index(uint32_t head_index);
+    DataFrame* get_frame_by_index(uint32_t head_index);
     uint32_t get_head(int32_t index_from_head) const;
 
 private:
     Buffer* _buffer{nullptr};
-    CameraConfig _config;
+    std::string _name;
     int _fd_shm{-1};
     size_t _shm_total_size{0};
     void* _map{nullptr};
     std::unordered_map<std::string, Buffer*> _buffer_map;
 
-    
     void _get_shm_map() ;
     void _get_shm_structure();
     void _get_transforms_from_config();

@@ -24,7 +24,14 @@ struct SettingsConfig {
     uint32_t id{0};
 };
 
+struct WriterConfig {
+    size_t width{0};
+    size_t height{0};
+    std::vector<TransformConfig> transforms{};
+};
+
 struct CameraConfig {
+    WriterConfig writer{};
     size_t fps;
     size_t height;
     size_t req_buffer_count;
@@ -39,6 +46,7 @@ struct CameraConfig {
 
 struct IMUConfig {
     std::string name;
+    WriterConfig writer{};
     std::string device;
     double sampling_frequency;
     double scale;

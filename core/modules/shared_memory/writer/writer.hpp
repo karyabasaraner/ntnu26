@@ -2,11 +2,11 @@
 #define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_WRITER_HPP
 
 #include "configs.hpp"
-#include "client.hpp"
+#include "../client.hpp"
 
-#include "ringbuffer.hpp"
-#include "transforms.hpp"
-#include "utils.hpp"
+#include "../ringbuffer.hpp"
+#include "../transforms.hpp"
+#include "../utils.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -23,7 +23,7 @@ namespace core {
 
 class SharedDictWriter : public SharedDictClient {
 public:
-    explicit SharedDictWriter(CameraConfig config={});
+    explicit SharedDictWriter(std::string name, WriterConfig config);
     ~SharedDictWriter();
 
     SharedDictWriter(const SharedDictWriter&) = delete;
@@ -35,13 +35,14 @@ public:
 
 private:
     Buffer* _buffer{nullptr};
-    CameraConfig _config;
     std::atomic<bool> _stop{false};
     std::condition_variable _cv;
     std::mutex _queue_mutex;
     std::queue<DataEntry> _data_queue;
+    std::string _name;
     std::thread _worker_thread;
     std::unique_ptr<core::Transform> _transform;
+    WriterConfig _config;
 
     void _get_transforms_from_config();
     void _process_queue();

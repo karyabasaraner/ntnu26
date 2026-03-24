@@ -1,12 +1,12 @@
 #ifndef WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_READER_HPP
 #define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_READER_HPP
 
+#include "client.hpp"
 #include "configs.hpp"
 #include "ringbuffer.hpp"
-#include "client.hpp"
-#include <cstdint>
-
 #include "utils.hpp"
+
+#include <cstdint>
 
 namespace core {
 

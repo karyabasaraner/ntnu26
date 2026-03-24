@@ -30,7 +30,7 @@ const std::unordered_map<std::string, uint32_t> Camera::FOURCC_FORMATS = {
     {"UYVY", V4L2_PIX_FMT_UYVY}
 };
 
-Camera::Camera(CameraConfig config) : _config(std::move(config)), _shdict_writer(_config) {
+Camera::Camera(CameraConfig config) : _config(std::move(config)), _shdict_writer(_config.name, _config.writer) {
     _open_device();
 
     if (!is_valid()) {
