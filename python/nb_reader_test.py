@@ -8,7 +8,9 @@ import core
 readers = [core.make_reader("configs/four-cameras.yaml", "front_left"),
            core.make_reader("configs/four-cameras.yaml", "front_right"),
            core.make_reader("configs/four-cameras.yaml", "left"),
-           core.make_reader("configs/four-cameras.yaml", "right")]
+           core.make_reader("configs/four-cameras.yaml", "right"),
+           core.make_reader("configs/four-cameras.yaml", "accelerometer"),
+           core.make_reader("configs/four-cameras.yaml", "gyroscope")]
 
 frames = []
 for reader in readers:
