@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "../utils/configs.hpp"
+#include "../shared_memory/writer.hpp"
 
 extern "C" {
 struct iio_context;
@@ -46,6 +47,7 @@ public:
 private:
     IMUConfig _config;
     int _buffer_poll_fd{-1};
+    SharedDictWriter _shdict_writer;
     std::atomic<bool> _running{false};
     std::thread _worker;
     std::unordered_map<std::string, float> _channel_offsets;
@@ -55,14 +57,15 @@ private:
     struct iio_channel* _timestamp_channel{nullptr};
     struct iio_context* _context{nullptr};
     struct iio_device* _device{nullptr};
+    uint32_t _sequence{0};
 
     bool _open_context();
     bool _setup_buffer();
-    size_t _read_buffer_sample(IMUSample& latest_sample);
     void _capture_loop();
     void _configure_device();
     void _destroy_resources();
     void _prepare_channels();
+    void _read_and_process_samples();
     void _set_channel_attr(struct iio_channel* channel, const std::string& attr_name, double value);
 };
 

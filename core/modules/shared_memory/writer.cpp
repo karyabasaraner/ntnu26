@@ -1,8 +1,8 @@
-#include "../client.hpp"
-#include "../ringbuffer.hpp"
-#include "../transforms.hpp"
-#include "../utils.hpp"
+#include "client.hpp"
 #include "configs.hpp"
+#include "ringbuffer.hpp"
+#include "transforms.hpp"
+#include "utils.hpp"
 #include "writer.hpp"
 
 #include <atomic>
@@ -146,12 +146,12 @@ void SharedDictWriter::_process_queue() {
 
         // Publish: get current sequence (pre-increment), write it to the frame, then advance sequence and head.
         // Use release ordering to make frame contents visible to readers that use acquire.
-        spdlog::debug(
-            "Wrote {}, seq {}, head {}",
-            entry.key,
-            entry.sequence,
-            next_head
-        );
+        // spdlog::debug(
+        //     "Wrote {}, seq {}, head {}",
+        //     entry.key,
+        //     entry.sequence,
+        //     next_head
+        // );
     }
 }
 
