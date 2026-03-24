@@ -147,7 +147,7 @@ void SharedDictWriter::_process_queue() {
 
         // Publish: get current sequence (pre-increment), write it to the frame, then advance sequence and head.
         // Use release ordering to make frame contents visible to readers that use acquire.
-        // spdlog::debug(
+        // spdlog::info(
         //     "Wrote {}, seq {}, head {}",
         //     entry.key,
         //     entry.sequence,
