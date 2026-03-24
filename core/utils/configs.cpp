@@ -26,8 +26,16 @@ void declare_config(SettingsConfig& config) {
     config::field(config.value, "value", "Value of the setting to apply");
 }
 
+void declare_config(WriterConfig& config) {
+    config::name("WriterConfig");
+    config::field(config.width, "width", "Width of the frames to write");
+    config::field(config.height, "height", "Height of the frames to write");
+    config::field(config.transforms, "transforms", "List of transforms to apply sequentially");
+}
+
 void declare_config(CameraConfig& config) {
     config::name("CameraConfig");
+    config::field(config.writer, "writer", "Configuration for the shared memory writer");
     config::field(config.device, "device", "Device path of the camera");
     config::field(config.format, "format", "Pixel format (e.g., RGB24)");
     config::field(config.fps, "fps", "Frames per second");
@@ -42,6 +50,7 @@ void declare_config(CameraConfig& config) {
 
 void declare_config(IMUConfig& config) {
     config::name("IMUConfig");
+    config::field(config.writer, "writer", "Configuration for the shared memory writer");
     config::field(config.name, "name", "Name of the IMU");
     config::field(config.device, "device", "IIO device identifier (e.g., iio:device0)");
     config::field(config.sampling_frequency, "sampling_frequency", "Target sampling frequency in Hz");

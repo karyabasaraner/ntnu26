@@ -2,7 +2,7 @@
 #define WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_HPP
 
 #include "../utils/configs.hpp"
-#include "../shared_memory/writer.hpp"
+#include "../shared_memory/writer/writer.hpp"
 
 #include <atomic>
 #include <chrono>

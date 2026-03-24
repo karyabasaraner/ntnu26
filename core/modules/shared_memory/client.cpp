@@ -42,10 +42,8 @@ inline bool add_overflow(size_t a, size_t b, size_t& out) noexcept {
 #endif
 }
 
-SharedDictClient::SharedDictClient(CameraConfig config) {
-    if (!config.name.empty()) {
-        _config = std::move(config);
-
+SharedDictClient::SharedDictClient(std::string name) : _name(std::move(name)) {
+    if (!_name.empty()) {
         _get_shm_map();
         _get_shm_structure();
     }
@@ -68,7 +66,7 @@ bool SharedDictClient::is_ready() const {
     }
 
     if (_buffer == nullptr) {
-        spdlog::warn("SharedDictClient is not ready: buffer '{}' not found in shared memory", _config.name);
+        spdlog::warn("SharedDictClient is not ready: buffer '{}' not found in shared memory", _name);
         return false;
     }
 
@@ -88,13 +86,13 @@ uint32_t SharedDictClient::get_head(int32_t index_from_head) const {
     // index_from_head=0 means getting the current head, so empty
     // index_from_head=1 means getting the most recently completed frame, so one back from head
     if (_buffer == nullptr) {
-        spdlog::error("{}: Cannot get requested head: buffer is null", _config.name);
+        spdlog::error("{}: Cannot get requested head: buffer is null", _name);
         return 0;
     }
 
     const uint32_t num_frames = _buffer->num_frames;
     if (num_frames == 0) {
-        spdlog::error("{}: num_frames is zero", _config.name);
+        spdlog::error("{}: num_frames is zero", _name);
         return 0;
     }
 
@@ -104,18 +102,18 @@ uint32_t SharedDictClient::get_head(int32_t index_from_head) const {
 }
 
 
-ImageFrame* SharedDictClient::get_frame_by_index(uint32_t head_index) {
+DataFrame* SharedDictClient::get_frame_by_index(uint32_t head_index) {
     if (_buffer == nullptr) {
-        spdlog::error("{}: Buffer is null", _config.name);
+        spdlog::error("{}: Buffer is null", _name);
         return nullptr;
     }
 
-    // Compute frame_stride = offsetof(ImageFrame, data) + size_per_frame
+    // Compute frame_stride = offsetof(DataFrame, data) + size_per_frame
     size_t frame_stride = 0;
-    if (add_overflow(static_cast<size_t>(offsetof(ImageFrame, data)),
+    if (add_overflow(static_cast<size_t>(offsetof(DataFrame, data)),
                      static_cast<size_t>(_buffer->size_per_frame),
                      frame_stride)) {
-        spdlog::error("{}: Frame stride overflows (header={} + payload={})", _config.name, offsetof(ImageFrame, data), _buffer->size_per_frame);
+        spdlog::error("{}: Frame stride overflows (header={} + payload={})", _name, offsetof(DataFrame, data), _buffer->size_per_frame);
         return nullptr;
     }
 
@@ -124,43 +122,43 @@ ImageFrame* SharedDictClient::get_frame_by_index(uint32_t head_index) {
     if (add_overflow(static_cast<size_t>(_buffer->offset),
                      static_cast<size_t>(offsetof(Buffer, frames)),
                      frames_base)) {
-        spdlog::error("{}: Frames base calculation overflow (offset={}, frames_off={})", _config.name, _buffer->offset, offsetof(Buffer, frames));
+        spdlog::error("{}: Frames base calculation overflow (offset={}, frames_off={})", _name, _buffer->offset, offsetof(Buffer, frames));
         return nullptr;
     }
 
     const size_t shm_size = get_shm_total_size();
 
     if (frames_base > shm_size) {
-        spdlog::error("{}: Frames base offset {} is out of bounds for shared memory size {}", _config.name, frames_base, shm_size);
+        spdlog::error("{}: Frames base offset {} is out of bounds for shared memory size {}", _name, frames_base, shm_size);
         return nullptr;
     }
 
     // offset_from_base = requested_head * frame_stride
     size_t offset_from_base = 0;
     if (mul_overflow(static_cast<size_t>(head_index), frame_stride, offset_from_base)) {
-        spdlog::error("{}: Frame offset multiplication would overflow (head={}, stride={})", _config.name, head_index, frame_stride);
+        spdlog::error("{}: Frame offset multiplication would overflow (head={}, stride={})", _name, head_index, frame_stride);
         return nullptr;
     }
 
     if (offset_from_base > shm_size - frames_base) {
-        spdlog::error("{}: Computed frame offset exceeds shared memory (offset={}, base={}, shm={})", _config.name, offset_from_base, frames_base, shm_size);
+        spdlog::error("{}: Computed frame offset exceeds shared memory (offset={}, base={}, shm={})", _name, offset_from_base, frames_base, shm_size);
         return nullptr;
     }
 
     size_t frame_offset = 0;
     if (add_overflow(frames_base, offset_from_base, frame_offset)) {
-        spdlog::error("{}: Frame offset addition overflow (base={}, offset={})", _config.name, frames_base, offset_from_base);
+        spdlog::error("{}: Frame offset addition overflow (base={}, offset={})", _name, frames_base, offset_from_base);
         return nullptr;
     }
 
     if (frame_stride > shm_size - frame_offset) {
-        spdlog::error("{}: Frame at offset {} (size {}) does not fully fit in shared memory of size {}", _config.name, frame_offset, frame_stride, shm_size);
+        spdlog::error("{}: Frame at offset {} (size {}) does not fully fit in shared memory of size {}", _name, frame_offset, frame_stride, shm_size);
         return nullptr;
     }
 
     auto* base = static_cast<std::byte*>(get_shm_map());
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-type-reinterpret-cast)
-    auto* frame = reinterpret_cast<ImageFrame*>(base + frame_offset);
+    auto* frame = reinterpret_cast<DataFrame*>(base + frame_offset);
     return frame;
 }
 
@@ -192,21 +190,21 @@ void SharedDictClient::_get_shm_structure() {
 
         // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast,cppcoreguidelines-pro-bounds-pointer-arithmetic)
         auto* buffer = reinterpret_cast<Buffer*>(static_cast<std::byte*>(_map) + cur_buffer_offset);
-        spdlog::info("{}: Found buffer with name {}", _config.name, buffer->name);
+        spdlog::info("{}: Found buffer with name {}", _name, buffer->name);
 
         /// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
-        if (buffer->name == _config.name) {
+        if (buffer->name == _name) {
             _buffer = buffer;
-            spdlog::info("{}: Matched buffer in shared memory with config name {}", _config.name, buffer->name);
+            spdlog::info("{}: Matched buffer in shared memory with config name {}", _name, buffer->name);
             break;
         }
 
         // Compute size for the entire buffer block: offsetof(Buffer, frames) + num_frames * frame_stride
         size_t frame_stride = 0;
-        if (add_overflow(static_cast<size_t>(offsetof(ImageFrame, data)),
+        if (add_overflow(static_cast<size_t>(offsetof(DataFrame, data)),
                          static_cast<size_t>(buffer->size_per_frame),
                          frame_stride)) {
-            spdlog::error("Frame stride overflow while iterating buffers (header={} + payload={})", offsetof(ImageFrame, data), buffer->size_per_frame);
+            spdlog::error("Frame stride overflow while iterating buffers (header={} + payload={})", offsetof(DataFrame, data), buffer->size_per_frame);
             break;
         }
 

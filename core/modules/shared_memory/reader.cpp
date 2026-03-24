@@ -1,8 +1,8 @@
 #include "reader.hpp"
 
+#include "client.hpp"
 #include "configs.hpp"
 #include "ringbuffer.hpp"
-#include "client.hpp"
 #include "utils.hpp"
 
 #include <cstddef>
@@ -15,7 +15,7 @@
 
 namespace core {
 
-SharedDictReader::SharedDictReader(CameraConfig config) : SharedDictClient(std::move(config)), _buffer(get_buffer()) {
+SharedDictReader::SharedDictReader(CameraConfig config) : SharedDictClient(std::move(config.name)), _buffer(get_buffer()) {
 }
 
 void SharedDictReader::read(DataEntry& entry, int32_t index_from_head) {
@@ -26,7 +26,7 @@ void SharedDictReader::read(DataEntry& entry, int32_t index_from_head) {
 
     const auto last_frame_head = get_head(index_from_head);
     spdlog::debug("Requested frame {} with index_from_head={}", last_frame_head, index_from_head);
-    ImageFrame* frame = get_frame_by_index(last_frame_head);
+    DataFrame* frame = get_frame_by_index(last_frame_head);
     if (frame == nullptr) {
         spdlog::warn("Failed to get requested frame, cannot read");
         return;

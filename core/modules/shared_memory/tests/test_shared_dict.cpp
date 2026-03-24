@@ -17,12 +17,10 @@ TEST(SharedDictTest, InitializeSharedDictMaster) {
 
 TEST(ShareDictTest, IntializeShareDictNoMaster) {
     // GIVEN: SharedDictClient without master is not ready
-    core::CameraConfig const config = {
-        .name = "right",
-    };
+    const std::string name = "right";
 
     // WHEN: SharedDictClient is initialized with config for a camera
-    core::SharedDictClient const shared_dict_client(config);
+    core::SharedDictClient const shared_dict_client(name);
 
     // THEN: SharedDictClient should not be ready to write
     EXPECT_FALSE(shared_dict_client.is_ready());
@@ -33,10 +31,8 @@ TEST(ShareDictTest, InitializeSharedDictClientWithMaster) {
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
 
     // WHEN: SharedDictClient is initialized with config for a camera
-    core::CameraConfig const config = {
-        .name = "right",
-    };
-    core::SharedDictClient const shared_dict_client(config);
+    const std::string name = "right";
+    core::SharedDictClient const shared_dict_client(name);
 
     // THEN: SharedDictClient should be ready to write
     EXPECT_TRUE(shared_dict_client.is_ready());

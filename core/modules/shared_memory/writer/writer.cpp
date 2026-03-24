@@ -1,10 +1,10 @@
+#include "../client.hpp"
+#include "../ringbuffer.hpp"
+#include "../transforms.hpp"
+#include "../utils.hpp"
+#include "configs.hpp"
 #include "writer.hpp"
 
-#include "configs.hpp"
-#include "ringbuffer.hpp"
-#include "client.hpp"
-#include "transforms.hpp"
-#include "utils.hpp"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -19,10 +19,8 @@
 
 namespace core {
 
-SharedDictWriter::SharedDictWriter(CameraConfig config) : SharedDictClient(std::move(config)) {
-    _config = get_config();
-
-    if (_config.name.empty()) {
+SharedDictWriter::SharedDictWriter(std::string name, WriterConfig config) : SharedDictClient(name), _name(std::move(name)), _config(std::move(config)) {
+    if (_name.empty()) {
         spdlog::warn("SharedDictWriter constructed with empty config name; writer not started");
         return;
     }
@@ -33,7 +31,7 @@ SharedDictWriter::SharedDictWriter(CameraConfig config) : SharedDictClient(std::
     // Obtain buffer before starting the worker to avoid races on readiness
     _buffer = get_buffer();
     if (_buffer == nullptr) {
-        spdlog::error("Failed to acquire shared buffer for '{}'; writer not started", _config.name);
+        spdlog::error("Failed to acquire shared buffer for '{}'; writer not started", _name);
         return;
     }
 
@@ -127,7 +125,7 @@ void SharedDictWriter::_process_queue() {
 
         // 3) Write to shared memory, index_from_head = 0 -> next empty frame
         const uint32_t next_head = get_head(0);
-        ImageFrame* frame = get_frame_by_index(next_head);
+        DataFrame* frame = get_frame_by_index(next_head);
         if (frame == nullptr) {
             spdlog::error("Failed to get next image frame for writing; skipping key: {}", entry.key);
             continue;

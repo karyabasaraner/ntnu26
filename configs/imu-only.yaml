@@ -1,21 +1,40 @@
 imus:
   - name: accelerometer
     device: "iio:device0"
-    sampling_frequency: 100 # Hz
+    sampling_frequency: 800 # Hz
     scale: 0.000897
     buffer_samples: 256
-    watermark_samples: 128
+    watermark_samples: 256
     channels:
       - "accel_x"
       - "accel_y"
       - "accel_z"
   - name: gyroscope
     device: "iio:device1"
-    sampling_frequency: 100 # Hz
+    sampling_frequency: 1000 # Hz
     scale: 0.001065
     buffer_samples: 256
-    watermark_samples: 128
+    watermark_samples: 256
     channels:
       - "anglvel_x"
       - "anglvel_y"
       - "anglvel_z"
+shared_memory:
+  - name: front_left
+    size_per_frame: 2764800 # 1280*720*3 bytes
+    num_frames: 300 # 10 seconds at 30 fps
+  - name: front_right
+    size_per_frame: 2764800 # 1280*720*3 bytes
+    num_frames: 300 # 10 seconds at 30 fps
+  - name: left
+    size_per_frame: 2764800 # 1280*720*3 bytes
+    num_frames: 300 # 10 seconds at 30 fps
+  - name: right
+    size_per_frame: 2764800 # 1280*720*3 bytes
+    num_frames: 300 # 10 seconds at 30 fps
+  - name: accelerometer
+    size_per_frame: 12 # 3 channel * 4 bytes/channels
+    num_frames: 8000 # 10 seconds at 800 Hz
+  - name: gyroscope
+    size_per_frame: 12 # 3 channel * 4 bytes/channels
+    num_frames: 10000 # 10 seconds at 1000 Hz
