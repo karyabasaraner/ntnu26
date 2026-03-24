@@ -3,11 +3,10 @@
 #include <string>
 #include <thread>
 
+#include "../../shared_memory/client/reader.hpp"
 #include "../../shared_memory/master.hpp"
-#include "../../shared_memory/reader.hpp"
 #include "../../shared_memory/utils.hpp"
 #include "../camera_module.hpp"
-#include "configs.hpp"
 
 const std::string TEST_CONFIG_PATH = "ci/configs/ci-four-cameras.yaml";
 

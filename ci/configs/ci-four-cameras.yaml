@@ -1,71 +1,101 @@
 cameras:
   - name: front_left
+    writer:
+      width: 1280
+      height: 720
+      transforms:
+      - name: UYVY2RGB
     device: /dev/video0
-    width: 1280
-    height: 720
-    fps: 60
-    subsample_factor: 2
+    fps: 30 # NOTE: This is not working; but we set the frame sync setting below
+    subsample_factor: 1
     settings:
       - name: vertical_flip
         value: 1
+      - name: white_balance_automatic
+        value: 0
+      - name: frame_sync
+        value: 1 # Frame Sync 30 Hz
+        id: 0x009a092a
     format: UYVY
     req_buffer_count: 4
-    transforms:
-      - name: UYVY2RGB
   - name: front_right
+    writer:
+      width: 1280
+      height: 720
+      transforms:
+      - name: UYVY2RGB
     device: /dev/video1
-    width: 1280
-    height: 720
-    fps: 60
-    subsample_factor: 2
+    fps: 30
+    subsample_factor: 1
     settings:
       - name: vertical_flip
         value: 1
+      - name: white_balance_automatic
+        value: 0
+      - name: frame_sync
+        value: 1
+        id: 0x009a092a
     format: UYVY
     req_buffer_count: 4
-    transforms:
-      - name: UYVY2RGB
   - name: left
+    writer:
+      width: 1280
+      height: 720
+      transforms:
+      - name: UYVY2RGB
     device: /dev/video2
-    width: 1280
-    height: 720
-    fps: 60
-    subsample_factor: 2
+    fps: 30
+    subsample_factor: 1
     settings:
       - name: vertical_flip
         value: 1
+      - name: white_balance_automatic
+        value: 0
+      - name: frame_sync
+        value: 1
+        id: 0x009a092a
     format: UYVY
-    req_buffer_count: 4
-    transforms:
-      - name: UYVY2RGB
+    req_buffer_count: 1
   - name: right
+    writer:
+      width: 1280
+      height: 720
+      transforms:
+      - name: UYVY2RGB
     device: /dev/video3
-    width: 1280
-    height: 720
-    fps: 60
-    subsample_factor: 2
+    fps: 30
+    subsample_factor: 1
     settings:
       - name: vertical_flip
         value: 1
+      - name: white_balance_automatic
+        value: 0
+      - name: frame_sync
+        value: 1
+        id: 0x009a092a
     format: UYVY
-    req_buffer_count: 4
-    transforms:
-      - name: UYVY2RGB
+    req_buffer_count: 1
 imus:
   - name: accelerometer
     device: "iio:device0"
-    sampling_frequency: 1000 # Hz
-    buffer_samples: 128
-    cyclic_buffer: true
+    sampling_frequency: 800 # Hz
+    scale: 0.000897
+    buffer_samples: 256
+    watermark_samples: 256
     channels:
       - "accel_x"
+      - "accel_y"
+      - "accel_z"
   - name: gyroscope
     device: "iio:device1"
     sampling_frequency: 1000 # Hz
-    buffer_samples: 128
-    cyclic_buffer: true
+    scale: 0.001065
+    buffer_samples: 256
+    watermark_samples: 256
     channels:
-      - "accel_x"
+      - "anglvel_x"
+      - "anglvel_y"
+      - "anglvel_z"
 shared_memory:
   - name: front_left
     size_per_frame: 2764800 # 1280*720*3 bytes
@@ -79,3 +109,9 @@ shared_memory:
   - name: right
     size_per_frame: 2764800 # 1280*720*3 bytes
     num_frames: 300 # 10 seconds at 30 fps
+  - name: accelerometer
+    size_per_frame: 12 # 3 channel * 4 bytes/channels
+    num_frames: 8000 # 10 seconds at 800 Hz
+  - name: gyroscope
+    size_per_frame: 12 # 3 channel * 4 bytes/channels
+    num_frames: 10000 # 10 seconds at 1000 Hz

@@ -1,8 +1,7 @@
 #ifndef WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_CLIENT_HPP
 #define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_CLIENT_HPP
 
-#include "../utils/configs.hpp"
-#include "ringbuffer.hpp"
+#include "../ringbuffer.hpp"
 
 #include <cstddef>
 #include <cstdint>
