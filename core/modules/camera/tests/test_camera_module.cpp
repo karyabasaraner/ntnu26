@@ -3,8 +3,8 @@
 #include <string>
 #include <thread>
 
-#include "../../shared_memory/shared_dict_master.hpp"
-#include "../../shared_memory/shared_dict_reader.hpp"
+#include "../../shared_memory/master.hpp"
+#include "../../shared_memory/reader.hpp"
 #include "../../shared_memory/utils.hpp"
 #include "../camera_module.hpp"
 #include "configs.hpp"

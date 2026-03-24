@@ -10,7 +10,7 @@
 #include <nanobind/ndarray.h>
 
 #include "core/modules/shared_memory/utils.hpp"
-#include "core/modules/shared_memory/shared_dict_reader.hpp"
+#include "core/modules/shared_memory/reader.hpp"
 #include "core/utils/configs.hpp"
 #include "nanobind/nb_defs.h"
 
