@@ -37,6 +37,8 @@ sudo apt install ccache \
                  libgtest-dev \
                  libopencv-dev \
                  libspdlog-dev \
+                 nvidia-opencv \
+                 nvidia-opencv-dev \
                  python3-dev \
                  python3.10-venv \
                  v4l-utils \

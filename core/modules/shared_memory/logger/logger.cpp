@@ -80,6 +80,7 @@ void SharedDictLogger::_register_channels() {
 }
 
 SharedDictLogger::~SharedDictLogger() {
+    std::lock_guard<std::mutex> lock(_writer_mutex);
     _writer.close();
 }
 
@@ -89,18 +90,53 @@ void SharedDictLogger::request_stop() {
 
 void SharedDictLogger::run() {
     spdlog::info("Logger started. Writing MCAP to {}", _output_path);
-    while (!_stop.load(std::memory_order_acquire)) {
-        for (auto& stream : _camera_streams) {
-            _drain_camera_stream(stream);
-        }
-        for (auto& stream : _imu_streams) {
-            _drain_imu_stream(stream);
-        }
+    std::vector<std::thread> workers;
+    workers.reserve(_camera_streams.size() + _imu_streams.size());
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    for (auto& stream : _camera_streams) {
+        auto* stream_ptr = &stream;
+        workers.emplace_back([this, stream_ptr]() {
+            try {
+                while (!_stop.load(std::memory_order_acquire)) {
+                    _drain_camera_stream(*stream_ptr);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+            } catch (const std::exception& ex) {
+                spdlog::error("Camera worker {} failed: {}", stream_ptr->name, ex.what());
+                _stop.store(true, std::memory_order_release);
+            }
+        });
     }
 
-    _writer.closeLastChunk();
+    for (auto& stream : _imu_streams) {
+        auto* stream_ptr = &stream;
+        workers.emplace_back([this, stream_ptr]() {
+            try {
+                while (!_stop.load(std::memory_order_acquire)) {
+                    _drain_imu_stream(*stream_ptr);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+            } catch (const std::exception& ex) {
+                spdlog::error("IMU worker {} failed: {}", stream_ptr->name, ex.what());
+                _stop.store(true, std::memory_order_release);
+            }
+        });
+    }
+
+    while (!_stop.load(std::memory_order_acquire)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    for (auto& worker : workers) {
+        if (worker.joinable()) {
+            worker.join();
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(_writer_mutex);
+        _writer.closeLastChunk();
+    }
     spdlog::info("Logger stopping");
 }
 
@@ -121,6 +157,16 @@ void SharedDictLogger::_drain_camera_stream(CameraLogStream& stream) {
         stream.initialized = true;
     }
 
+    if (latest.sequence < stream.last_sequence) {
+        spdlog::warn(
+            "Camera {} sequence moved backwards (last={}, latest={}), resetting stream cursor",
+            stream.name,
+            stream.last_sequence,
+            latest.sequence
+        );
+        stream.last_sequence = latest.sequence - 1;
+    }
+
     const uint32_t delta = latest.sequence - stream.last_sequence;
     if (delta == 0) {
         return;
@@ -130,8 +176,6 @@ void SharedDictLogger::_drain_camera_stream(CameraLogStream& stream) {
     if (to_drain > stream.num_frames) {
         spdlog::warn("Camera {} overflow: lost {} samples", stream.name, to_drain - stream.num_frames);
         to_drain = stream.num_frames;
-    } else {
-        spdlog::info("Draining {} samples from camera {}", to_drain, stream.name);
     }
 
     for (auto idx = static_cast<int32_t>(to_drain); idx >= 1; --idx) {
@@ -198,6 +242,7 @@ void SharedDictLogger::_drain_camera_stream(CameraLogStream& stream) {
         msg.data = payload.data();
         msg.dataSize = payload.size();
 
+        std::lock_guard<std::mutex> lock(_writer_mutex);
         const auto status = _writer.write(msg);
         if (!status.ok()) {
             spdlog::error("Failed to write camera sample for {}: {}", stream.name, status.message);
@@ -221,6 +266,16 @@ void SharedDictLogger::_drain_imu_stream(IMULogStream& stream) {
     if (!stream.initialized) {
         stream.last_sequence = latest.sequence - 1;
         stream.initialized = true;
+    }
+
+    if (latest.sequence < stream.last_sequence) {
+        spdlog::warn(
+            "IMU {} sequence moved backwards (last={}, latest={}), resetting stream cursor",
+            stream.name,
+            stream.last_sequence,
+            latest.sequence
+        );
+        stream.last_sequence = latest.sequence - 1;
     }
 
     const uint32_t delta = latest.sequence - stream.last_sequence;
@@ -261,6 +316,7 @@ void SharedDictLogger::_drain_imu_stream(IMULogStream& stream) {
         msg.data = payload.data();
         msg.dataSize = payload.size();
 
+        std::lock_guard<std::mutex> lock(_writer_mutex);
         const auto status = _writer.write(msg);
         if (!status.ok()) {
             spdlog::error("Failed to write IMU sample for {}: {}", stream.name, status.message);

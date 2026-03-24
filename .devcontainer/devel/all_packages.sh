@@ -32,11 +32,13 @@ main() {
         libusb-1.0-0-dev
         libxml2-dev
         libyaml-cpp-dev
+        libzstd-dev
         python3-dev
         python3.12-venv
         rsync
         v4l-utils
         zlib1g-dev
+        zstd
     )
 
     apt-get update

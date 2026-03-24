@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -54,6 +55,7 @@ private:
     int _jpeg_quality{90};
     mcap::McapWriter _writer;
     std::atomic<bool> _stop{false};
+    std::mutex _writer_mutex;
     std::string _output_path;
     std::unordered_map<std::string, uint32_t> _buffer_sizes;
     std::vector<CameraLogStream> _camera_streams;
