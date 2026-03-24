@@ -33,14 +33,11 @@ struct WriterConfig {
 struct CameraConfig {
     WriterConfig writer{};
     size_t fps;
-    size_t height;
     size_t req_buffer_count;
-    size_t width;
     std::string device;
     std::string format;
     std::string name;
     std::vector<SettingsConfig> settings;
-    std::vector<TransformConfig> transforms;
     uint32_t subsample_factor{1};
 };
 

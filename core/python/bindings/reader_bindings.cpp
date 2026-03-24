@@ -1,10 +1,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
@@ -15,28 +16,37 @@
 #include "nanobind/nb_defs.h"
 
 namespace nb = nanobind;
+
+// NOLINTNEXTLINE(google-build-using-namespace)
 using namespace nb::literals;
 
 namespace core_bindings {
 
 // Helper to create a SharedDictReader from a config file and camera name
-static std::unique_ptr<core::SharedDictReader> make_reader(const std::string& config_path,
-                                                           const std::string& camera_name) {
+static std::unique_ptr<core::SharedDictReader> make_reader(const std::string& config_path, const std::string& name) {
     core::Config cfg;
     cfg.load(config_path);
     const auto& cameras = cfg.get_config().cameras;
     for (const auto& cam : cameras) {
-        if (cam.name == camera_name) {
-            return std::make_unique<core::SharedDictReader>(cam);
+        if (cam.name == name) {
+            spdlog::info("Creating SharedDictReader for camera: {}", name);
+            return std::make_unique<core::SharedDictReader>(name);
         }
     }
-    throw std::runtime_error("Camera name not found in config: " + camera_name);
+    for (const auto& imu : cfg.get_config().imus) {
+        if (imu.name == name) {
+            spdlog::info("Creating SharedDictReader for IMU: {}", name);
+            return std::make_unique<core::SharedDictReader>(name);
+        }
+    }
+    spdlog::error("No camera or IMU with name '{}' found in config '{}'", name, config_path);
+    return nullptr;
 }
 
-// Raw-pointer variant for nanobind with take_ownership policy
-static core::SharedDictReader* make_reader_raw(nb::str config_path, nb::str camera_name) {
+// Raw-pointer variant for nanobind with take_ownership policy)
+static core::SharedDictReader* make_reader_raw(nb::str& config_path, nb::str& name) {
     const std::string config_path_str = config_path.c_str();
-    const std::string camera_name_str = camera_name.c_str();
+    const std::string camera_name_str = name.c_str();
     auto reader = make_reader(config_path_str, camera_name_str);
     return reader.release();
 }

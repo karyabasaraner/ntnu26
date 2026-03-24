@@ -124,8 +124,8 @@ bool Camera::_configure() const {
     struct v4l2_format fmt{};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    fmt.fmt.pix.width = _config.width;
-    fmt.fmt.pix.height = _config.height;
+    fmt.fmt.pix.width = _config.writer.width;
+    fmt.fmt.pix.height = _config.writer.height;
     fmt.fmt.pix.pixelformat = FOURCC_FORMATS.at(_config.format);
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
 

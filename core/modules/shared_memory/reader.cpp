@@ -15,7 +15,7 @@
 
 namespace core {
 
-SharedDictReader::SharedDictReader(CameraConfig config) : SharedDictClient(std::move(config.name)), _buffer(get_buffer()) {
+SharedDictReader::SharedDictReader(std::string name) : SharedDictClient(std::move(name)), _buffer(get_buffer()) {
 }
 
 void SharedDictReader::read(DataEntry& entry, int32_t index_from_head) {
