@@ -1,8 +1,10 @@
 #ifndef WORKSPACES_CORE_CORE_MODULES_IMU_IMU_MODULE_HPP
 #define WORKSPACES_CORE_CORE_MODULES_IMU_IMU_MODULE_HPP
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "../utils/configs.hpp"
 #include "imu_device.hpp"
@@ -13,6 +15,11 @@ class IMUModule {
 public:
     explicit IMUModule(const std::string& config_path);
     ~IMUModule();
+
+    IMUModule(const IMUModule&) = delete;
+    IMUModule& operator=(const IMUModule&) = delete;
+    IMUModule(IMUModule&&) = delete;
+    IMUModule& operator=(IMUModule&&) = delete;
 
     uint8_t get_num_imus() const;
     void start_imus();

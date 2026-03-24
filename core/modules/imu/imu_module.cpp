@@ -1,7 +1,11 @@
 #include "imu_module.hpp"
 
+#include "imu_device.hpp"
+#include <cstdint>
+#include <memory>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <utility>
 
 namespace core {
 

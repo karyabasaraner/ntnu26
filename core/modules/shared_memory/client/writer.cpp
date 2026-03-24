@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <spdlog/spdlog.h>
+#include <string>
 #include <utility>
 #include <vector>
 #include <zconf.h>

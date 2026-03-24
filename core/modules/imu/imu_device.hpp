@@ -2,19 +2,14 @@
 #define WORKSPACES_CORE_CORE_MODULES_IMU_IMU_DEVICE_HPP
 
 #include <atomic>
-#include <chrono>
-#include <cstddef>
 #include <cstdint>
-#include <mutex>
 #include <string>
-#include <sys/types.h>
 #include <thread>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
-#include "../utils/configs.hpp"
 #include "../shared_memory/client/writer.hpp"
+#include "../utils/configs.hpp"
 
 extern "C" {
 struct iio_context;
@@ -66,7 +61,7 @@ private:
     void _destroy_resources();
     void _prepare_channels();
     void _read_and_process_samples();
-    void _set_channel_attr(struct iio_channel* channel, const std::string& attr_name, double value);
+    static void _set_channel_attr(struct iio_channel* channel, const std::string& attr_name, double value);
 };
 
 } // namespace core
