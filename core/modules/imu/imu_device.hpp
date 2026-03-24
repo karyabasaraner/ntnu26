@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <sys/types.h>
@@ -24,16 +25,9 @@ struct iio_buffer;
 namespace core {
 
 struct IMUSample {
-    int64_t timestamp_ns{0};
-    std::unordered_map<std::string, double> values_si;
+    std::vector<uint64_t> timestamps_ns;
+    std::vector<std::vector<float>> data;
 };
-
-// struct ChannelCursor {
-//     const std::string* name;
-//     struct iio_channel* channel;
-//     const char* first;
-// };
-
 
 class IMUDevice {
 public:
@@ -51,19 +45,16 @@ public:
 
 private:
     IMUConfig _config;
+    int _buffer_poll_fd{-1};
     std::atomic<bool> _running{false};
     std::thread _worker;
+    std::unordered_map<std::string, float> _channel_offsets;
+    std::unordered_map<std::string, float> _channel_scales;
+    std::unordered_map<std::string, struct iio_channel*> _channels;
+    struct iio_buffer* _buffer{nullptr};
+    struct iio_channel* _timestamp_channel{nullptr};
     struct iio_context* _context{nullptr};
     struct iio_device* _device{nullptr};
-    struct iio_buffer* _buffer{nullptr};
-    int _buffer_poll_fd{-1};
-    struct iio_channel* _timestamp_channel{nullptr};
-    std::unordered_map<std::string, struct iio_channel*> _channels;
-    std::unordered_map<std::string, double> _channel_scales;
-    std::unordered_map<std::string, double> _channel_offsets;
-    mutable std::mutex _sample_mutex;
-    IMUSample _latest_sample;
-    bool _has_latest_sample{false};
 
     bool _open_context();
     bool _setup_buffer();

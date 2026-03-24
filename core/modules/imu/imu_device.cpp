@@ -155,15 +155,21 @@ void IMUDevice::_capture_loop() {
                 spdlog::warn("Poll error on IIO buffer for {}: {}", _config.device, std::strerror(errno));
                 continue;
 
-            } else if (poll_ret == 0) {
+            }
+            if (poll_ret == 0) {
                 // This is ok
                 continue;
             }
         }
 
-        IMUSample latest_batch_sample{};
-        _read_buffer_sample(latest_batch_sample);
+        IMUSample batch_sample{};
+        const size_t read = _read_buffer_sample(batch_sample);
+        if (read <= 0) {
+            spdlog::warn("Empty sample read {}", _config.device);
+            continue;
+        }
 
+        // Add to shared dict writer
     }
 }
 
@@ -173,10 +179,11 @@ size_t IMUDevice::_read_buffer_sample(IMUSample& sample) {
     // 0. Check if buffer is initialized
     if (_buffer == nullptr) {
         spdlog::error("IIO buffer not initialized for {}", _config.device);
-        return false;
+        return 0;
     }
 
     // 1. Refill buffer with new samples from device
+    const auto timestamp = std::chrono::steady_clock::now();
     const ssize_t refill_ret = iio_buffer_refill(_buffer);
     if (refill_ret <= 0) {
         spdlog::warn("Failed to refill IIO buffer for {}: {}", _config.device, std::strerror(-refill_ret));
@@ -186,8 +193,11 @@ size_t IMUDevice::_read_buffer_sample(IMUSample& sample) {
     // 2. Get the buffer step size
     const ptrdiff_t step = iio_buffer_step(_buffer);
     const size_t num_samples_in_buffer = static_cast<size_t>(refill_ret) / static_cast<size_t>(step);
+    sample.timestamps_ns.reserve(num_samples_in_buffer);
+    sample.data.reserve(num_samples_in_buffer);
 
     // 3. Iterate over samples in buffer and decode them
+    auto offset_imu_real_ns = std::chrono::nanoseconds(0);
     for (size_t index = 0; index < num_samples_in_buffer; ++index) {
         // 3a. Decode timestamp
         const char* timestamp_ptr = static_cast<const char*>(iio_buffer_first(_buffer, _timestamp_channel)) + static_cast<ptrdiff_t>(index) * step;
@@ -196,29 +206,40 @@ size_t IMUDevice::_read_buffer_sample(IMUSample& sample) {
             continue;
         }
 
-        int64_t timestamp_value = 0;
-        iio_channel_convert(_timestamp_channel, &timestamp_value, timestamp_ptr);
-        spdlog::info("Sample {} timestamp: {}", index, timestamp_value);
+        int64_t timestamp_imu = 0;
+        iio_channel_convert(_timestamp_channel, &timestamp_imu, timestamp_ptr);
+
+        if (index == 0) {
+            // Record a new offset at the first sample
+            offset_imu_real_ns = std::chrono::nanoseconds(timestamp_imu) - timestamp.time_since_epoch();
+        }
+        const auto timestamp_real = std::chrono::nanoseconds(timestamp_imu) - offset_imu_real_ns;
 
         // 3b. Decode data channels
+        std::vector<float> channnel_data;
+        channnel_data.reserve(_channels.size());
         for (const auto& [name, channel] : _channels) {
-            int64_t value = 0;
             const char* channel_ptr = static_cast<const char*>(iio_buffer_first(_buffer, channel)) + static_cast<ptrdiff_t>(index) * step;
             if (channel_ptr >= static_cast<const char*>(iio_buffer_end(_buffer))) {
                 spdlog::warn("Channel {} pointer out of buffer bounds for sample {}", name, index);
                 continue;
             }
 
+            int16_t value = 0;
             iio_channel_convert(channel, &value, channel_ptr);
-            spdlog::info("Sample {} channel {} raw value: {}", index, name, value);
 
             // Convert to SI units using scale and offset
-            const double value_si = (static_cast<double>(value) + _channel_offsets[name]) * _channel_scales[name];
-            // spdlog::info("Sample {} channel {} SI value: {}", index, name, value_si);
+            const float value_si = (static_cast<float>(value) + _channel_offsets[name]) * _channel_scales[name];
+            channnel_data.push_back(value_si);
         }
+
+        // 3c. Channels are read in z, y, x order, so reverse to x, y, z
+        std::reverse(channnel_data.begin(), channnel_data.end());
+
+        sample.timestamps_ns.push_back(timestamp_real.count());
+        sample.data.push_back(std::move(channnel_data));
         read++;
     }
-
     return read;
 }
 
@@ -278,12 +299,6 @@ void IMUDevice::_destroy_resources() {
     _channel_offsets.clear();
     _timestamp_channel = nullptr;
     _device = nullptr;
-
-    {
-        std::lock_guard<std::mutex> lock(_sample_mutex);
-        _latest_sample = IMUSample{};
-        _has_latest_sample = false;
-    }
 
     if (_context != nullptr) {
         iio_context_destroy(_context);
