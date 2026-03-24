@@ -15,7 +15,7 @@
 
 namespace core {
 
-IMUDevice::IMUDevice(IMUConfig config) : _config(std::move(config)) {}
+IMUDevice::IMUDevice(IMUConfig config) : _config(std::move(config)), _shdict_writer(_config.name, _config.writer) {}
 
 IMUDevice::~IMUDevice() {
     stop();
@@ -161,25 +161,15 @@ void IMUDevice::_capture_loop() {
                 continue;
             }
         }
-
-        IMUSample batch_sample{};
-        const size_t read = _read_buffer_sample(batch_sample);
-        if (read <= 0) {
-            spdlog::warn("Empty sample read {}", _config.device);
-            continue;
-        }
-
-        // Add to shared dict writer
+        _read_and_process_samples();
     }
 }
 
-size_t IMUDevice::_read_buffer_sample(IMUSample& sample) {
-    size_t read = 0;
-
+void IMUDevice::_read_and_process_samples() {
     // 0. Check if buffer is initialized
     if (_buffer == nullptr) {
         spdlog::error("IIO buffer not initialized for {}", _config.device);
-        return 0;
+        return;
     }
 
     // 1. Refill buffer with new samples from device
@@ -187,14 +177,12 @@ size_t IMUDevice::_read_buffer_sample(IMUSample& sample) {
     const ssize_t refill_ret = iio_buffer_refill(_buffer);
     if (refill_ret <= 0) {
         spdlog::warn("Failed to refill IIO buffer for {}: {}", _config.device, std::strerror(-refill_ret));
-        return read;
+        return;
     }
 
     // 2. Get the buffer step size
     const ptrdiff_t step = iio_buffer_step(_buffer);
     const size_t num_samples_in_buffer = static_cast<size_t>(refill_ret) / static_cast<size_t>(step);
-    sample.timestamps_ns.reserve(num_samples_in_buffer);
-    sample.data.reserve(num_samples_in_buffer);
 
     // 3. Iterate over samples in buffer and decode them
     auto offset_imu_real_ns = std::chrono::nanoseconds(0);
@@ -216,8 +204,8 @@ size_t IMUDevice::_read_buffer_sample(IMUSample& sample) {
         const auto timestamp_real = std::chrono::nanoseconds(timestamp_imu) - offset_imu_real_ns;
 
         // 3b. Decode data channels
-        std::vector<float> channnel_data;
-        channnel_data.reserve(_channels.size());
+        std::vector<float> channel_data;
+        channel_data.reserve(_channels.size());
         for (const auto& [name, channel] : _channels) {
             const char* channel_ptr = static_cast<const char*>(iio_buffer_first(_buffer, channel)) + static_cast<ptrdiff_t>(index) * step;
             if (channel_ptr >= static_cast<const char*>(iio_buffer_end(_buffer))) {
@@ -230,17 +218,17 @@ size_t IMUDevice::_read_buffer_sample(IMUSample& sample) {
 
             // Convert to SI units using scale and offset
             const float value_si = (static_cast<float>(value) + _channel_offsets[name]) * _channel_scales[name];
-            channnel_data.push_back(value_si);
+            channel_data.push_back(value_si);
         }
 
-        // 3c. Channels are read in z, y, x order, so reverse to x, y, z
-        std::reverse(channnel_data.begin(), channnel_data.end());
+        // 3c. Reverse the buffer from zyx to xyz order
+        std::reverse(channel_data.begin(), channel_data.end());
 
-        sample.timestamps_ns.push_back(timestamp_real.count());
-        sample.data.push_back(std::move(channnel_data));
-        read++;
+        // 3c. Submit to writer
+        const size_t length = channel_data.size() * sizeof(float);
+        _shdict_writer.add(_config.name, channel_data.data(), length, _sequence, timestamp_real.count());
+        _sequence++;
     }
-    return read;
 }
 
 bool IMUDevice::_setup_buffer() {

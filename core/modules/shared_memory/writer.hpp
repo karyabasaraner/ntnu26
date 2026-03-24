@@ -1,12 +1,11 @@
 #ifndef WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_WRITER_HPP
 #define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_WRITER_HPP
 
+#include "client.hpp"
 #include "configs.hpp"
-#include "../client.hpp"
-
-#include "../ringbuffer.hpp"
-#include "../transforms.hpp"
-#include "../utils.hpp"
+#include "ringbuffer.hpp"
+#include "transforms.hpp"
+#include "utils.hpp"
 
 #include <atomic>
 #include <condition_variable>

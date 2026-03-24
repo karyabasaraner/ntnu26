@@ -2,7 +2,7 @@
 #define WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_HPP
 
 #include "../utils/configs.hpp"
-#include "../shared_memory/writer/writer.hpp"
+#include "../shared_memory/writer.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -47,7 +47,6 @@ private:
     };
     std::vector<Buffer> _buffers;
 
-    // Shared memory dictionary for inter-module communication
     SharedDictWriter _shdict_writer;
 
     bool _close_device();
