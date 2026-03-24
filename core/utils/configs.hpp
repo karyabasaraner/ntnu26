@@ -9,9 +9,9 @@
 namespace core {
 
 struct RingBufferConfig {
-    std::string name;
-    size_t size_per_frame;
     size_t num_frames;
+    size_t size_per_frame;
+    std::string name;
 };
 
 struct TransformConfig {
@@ -19,37 +19,37 @@ struct TransformConfig {
 };
 
 struct SettingsConfig {
-    std::string name;
     int value;
+    std::string name;
     uint32_t id{0};
 };
 
 struct WriterConfig {
-    size_t width{0};
     size_t height{0};
-    std::vector<TransformConfig> transforms{};
+    size_t width{0};
+    std::vector<TransformConfig> transforms;
 };
 
 struct CameraConfig {
-    WriterConfig writer{};
     size_t fps;
     size_t req_buffer_count;
     std::string device;
     std::string format;
     std::string name;
     std::vector<SettingsConfig> settings;
+    std::vector<WriterConfig> writer;
     uint32_t subsample_factor{1};
 };
 
 struct IMUConfig {
-    std::string name;
-    WriterConfig writer{};
-    std::string device;
-    double sampling_frequency;
-    double scale;
+    float sampling_frequency;
+    float scale;
     size_t buffer_samples;
     size_t watermark_samples;
+    std::string device;
+    std::string name;
     std::vector<std::string> channels;
+    std::vector<WriterConfig> writer;
 };
 
 struct RootConfig {
@@ -61,6 +61,7 @@ struct RootConfig {
 void declare_config(CameraConfig& config);
 void declare_config(IMUConfig& config);
 void declare_config(RootConfig& config);
+void declare_config(WriterConfig& config);
 
 class Config {
 public:

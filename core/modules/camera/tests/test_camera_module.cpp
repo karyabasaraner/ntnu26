@@ -44,7 +44,7 @@ TEST(CameraModuleTest, StartWithWritingAndReading) {
     camera_module.start_cameras();
 
     // WHEN: A separate reader is initialized for one of the cameras
-    std::string name = "right";
+    std::string const name = "right";
     core::SharedDictReader shared_dict_reader(name);
 
     // THEN: Reader should be ready to read frames from shared memory

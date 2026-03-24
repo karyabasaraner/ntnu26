@@ -6,6 +6,7 @@
 #include "client.hpp"
 
 #include <cstdint>
+#include <string>
 
 namespace core {
 

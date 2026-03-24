@@ -4,9 +4,11 @@
 #include "../utils.hpp"
 #include "client.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <spdlog/spdlog.h>
+#include <string>
 #include <utility>
 #include <zconf.h>
 #include <zlib.h>
