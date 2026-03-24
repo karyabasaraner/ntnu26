@@ -48,7 +48,7 @@ void SharedDictReader::read(DataEntry& entry, int32_t index_from_head) {
     entry.sequence = frame->sequence;
     entry.timestamp_ns = frame->timestamp_ns;
 
-    spdlog::info("Read frame seq {}, ts {}", frame->sequence, frame->timestamp_ns);
+    // spdlog::debug("Read frame seq {}, ts {}", frame->sequence, frame->timestamp_ns);
 }
 
 } // namespace core
