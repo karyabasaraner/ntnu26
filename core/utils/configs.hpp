@@ -37,7 +37,7 @@ struct CameraConfig {
     std::string format;
     std::string name;
     std::vector<SettingsConfig> settings;
-    std::vector<WriterConfig> writer;
+    WriterConfig writer;
     uint32_t subsample_factor{1};
 };
 
@@ -49,7 +49,7 @@ struct IMUConfig {
     std::string device;
     std::string name;
     std::vector<std::string> channels;
-    std::vector<WriterConfig> writer;
+    WriterConfig writer;
 };
 
 struct RootConfig {

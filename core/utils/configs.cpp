@@ -42,12 +42,12 @@ void declare_config(CameraConfig& config) {
     config::field(config.req_buffer_count, "req_buffer_count", "Number of buffers to request for memory mapping");
     config::field(config.settings, "settings", "List of key-value settings for the camera (e.g., vertical_flip)");
     config::field(config.subsample_factor, "subsample_factor", "Factor by which to subsample frames (e.g., 4 means keep 1 in every 4 frames)");
-    config::field(config.writer, "writer", "Configuration for the shared memory writer");
+    config::field(config.writer, "writer");
 }
 
 void declare_config(IMUConfig& config) {
     config::name("IMUConfig");
-    config::field(config.writer, "writer", "Configuration for the shared memory writer");
+    config::field(config.writer, "writer");
     config::field(config.name, "name", "Name of the IMU");
     config::field(config.device, "device", "IIO device identifier (e.g., iio:device0)");
     config::field(config.sampling_frequency, "sampling_frequency", "Target sampling frequency in Hz");
