@@ -9,7 +9,7 @@
 
 #include "modules/camera/camera_module.hpp"
 #include "modules/imu/imu_module.hpp"
-#include "modules/shared_memory/shared_dict_master.hpp"
+#include "modules/shared_memory/master.hpp"
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static std::atomic<bool> g_running{true};

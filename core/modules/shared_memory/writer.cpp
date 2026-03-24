@@ -1,8 +1,8 @@
-#include "shared_dict_writer.hpp"
+#include "writer.hpp"
 
 #include "configs.hpp"
 #include "ringbuffer.hpp"
-#include "shared_dict_client.hpp"
+#include "client.hpp"
 #include "transforms.hpp"
 #include "utils.hpp"
 #include <atomic>

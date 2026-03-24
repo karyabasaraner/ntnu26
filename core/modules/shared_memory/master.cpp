@@ -1,4 +1,4 @@
-#include "shared_dict_master.hpp"
+#include "master.hpp"
 
 #include <algorithm>
 #include <atomic>

@@ -3,7 +3,7 @@
 
 #include "configs.hpp"
 #include "ringbuffer.hpp"
-#include "shared_dict_client.hpp"
+#include "client.hpp"
 #include <cstdint>
 
 #include "utils.hpp"

@@ -3,12 +3,7 @@ project(shared_memory LANGUAGES CXX)
 find_package(CUDAToolkit REQUIRED)
 find_package(ZLIB REQUIRED)
 
-add_library(shared_memory SHARED shared_dict_master.cpp
-                                 shared_dict_client.cpp
-                                 shared_dict_writer.cpp
-                                 shared_dict_reader.cpp
-                                 transforms.cpp
-            )
+add_library(shared_memory SHARED master.cpp client.cpp writer.cpp reader.cpp transforms.cpp)
 target_include_directories(shared_memory PUBLIC ${CMAKE_SOURCE_DIR}/core/utils)
 target_include_directories(shared_memory PUBLIC ${ZLIB_INCLUDE_DIRS})
 

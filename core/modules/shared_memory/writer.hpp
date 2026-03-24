@@ -2,7 +2,7 @@
 #define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_SHARED_DICT_WRITER_HPP
 
 #include "configs.hpp"
-#include "shared_dict_client.hpp"
+#include "client.hpp"
 
 #include "ringbuffer.hpp"
 #include "transforms.hpp"

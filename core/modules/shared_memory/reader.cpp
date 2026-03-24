@@ -1,8 +1,8 @@
-#include "shared_dict_reader.hpp"
+#include "reader.hpp"
 
 #include "configs.hpp"
 #include "ringbuffer.hpp"
-#include "shared_dict_client.hpp"
+#include "client.hpp"
 #include "utils.hpp"
 
 #include <cstddef>
