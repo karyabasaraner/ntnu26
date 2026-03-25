@@ -17,24 +17,23 @@
 
 namespace core {
 
-struct CameraLogStream {
-    std::string name;
-    uint32_t num_frames{1};
-    size_t width{0};
-    size_t height{0};
-    std::unique_ptr<SharedDictReader> reader;
-    mcap::ChannelId channel_id{0};
-    bool initialized{false};
-    uint32_t last_sequence{0};
+enum StreamType {
+    CAMERA,
+    IMU,
 };
 
-struct IMULogStream {
-    std::string name;
-    uint32_t num_frames{1};
-    std::unique_ptr<SharedDictReader> reader;
-    mcap::ChannelId channel_id{0};
+struct SensorStream {
     bool initialized{false};
-    uint32_t last_sequence{0};
+    mcap::ChannelId channel_id{0};
+    size_t height{0};
+    size_t width{0};
+    std::string name;
+    std::unique_ptr<SharedDictReader> reader;
+    StreamType type;
+    uint32_t current_head{0};
+    uint32_t current_sequence{0};
+    uint32_t num_frames{1};
+
 };
 
 class SharedDictLogger {
@@ -58,14 +57,14 @@ private:
     std::mutex _writer_mutex;
     std::string _output_path;
     std::unordered_map<std::string, uint32_t> _buffer_sizes;
-    std::vector<CameraLogStream> _camera_streams;
-    std::vector<IMULogStream> _imu_streams;
+    std::vector<SensorStream> _sensor_streams;
 
-    void _drain_camera_stream(CameraLogStream& stream);
-    void _drain_imu_stream(IMULogStream& stream);
+    void _process_sensor_stream(SensorStream& stream);
     void _initialize_streams();
     void _open_writer();
     void _register_channels();
+    void _get_camera_payload(DataEntry& entry, const SensorStream& stream, std::vector<std::byte>& payload);
+    void _get_imu_payload(const DataEntry& entry, std::vector<std::byte>& payload);
 
     template <typename T>
     void _append_value(std::vector<std::byte>& out, const T& value);
