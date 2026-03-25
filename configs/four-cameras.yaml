@@ -18,63 +18,63 @@ cameras:
         id: 0x009a092a
     format: UYVY
     req_buffer_count: 4
-  # - name: front_right
-  #   writer:
-  #     width: 1280
-  #     height: 720
-  #     transforms:
-  #     - name: UYVY2RGB
-  #   device: /dev/video1
-  #   fps: 30
-  #   subsample_factor: 1
-  #   settings:
-  #     - name: vertical_flip
-  #       value: 1
-  #     - name: white_balance_automatic
-  #       value: 0
-  #     - name: frame_sync
-  #       value: 1
-  #       id: 0x009a092a
-  #   format: UYVY
-  #   req_buffer_count: 4
-  # - name: left
-  #   writer:
-  #     width: 1280
-  #     height: 720
-  #     transforms:
-  #     - name: UYVY2RGB
-  #   device: /dev/video2
-  #   fps: 30
-  #   subsample_factor: 1
-  #   settings:
-  #     - name: vertical_flip
-  #       value: 1
-  #     - name: white_balance_automatic
-  #       value: 0
-  #     - name: frame_sync
-  #       value: 1
-  #       id: 0x009a092a
-  #   format: UYVY
-  #   req_buffer_count: 1
-  # - name: right
-  #   writer:
-  #     width: 1280
-  #     height: 720
-  #     transforms:
-  #     - name: UYVY2RGB
-  #   device: /dev/video3
-  #   fps: 30
-  #   subsample_factor: 1
-  #   settings:
-  #     - name: vertical_flip
-  #       value: 1
-  #     - name: white_balance_automatic
-  #       value: 0
-  #     - name: frame_sync
-  #       value: 1
-  #       id: 0x009a092a
-  #   format: UYVY
-  #   req_buffer_count: 1
+  - name: front_right
+    writer:
+      width: 1280
+      height: 720
+      transforms:
+      - name: UYVY2RGB
+    device: /dev/video1
+    fps: 30
+    subsample_factor: 1
+    settings:
+      - name: vertical_flip
+        value: 1
+      - name: white_balance_automatic
+        value: 0
+      - name: frame_sync
+        value: 1
+        id: 0x009a092a
+    format: UYVY
+    req_buffer_count: 4
+  - name: left
+    writer:
+      width: 1280
+      height: 720
+      transforms:
+      - name: UYVY2RGB
+    device: /dev/video2
+    fps: 30
+    subsample_factor: 1
+    settings:
+      - name: vertical_flip
+        value: 1
+      - name: white_balance_automatic
+        value: 0
+      - name: frame_sync
+        value: 1
+        id: 0x009a092a
+    format: UYVY
+    req_buffer_count: 1
+  - name: right
+    writer:
+      width: 1280
+      height: 720
+      transforms:
+      - name: UYVY2RGB
+    device: /dev/video3
+    fps: 30
+    subsample_factor: 1
+    settings:
+      - name: vertical_flip
+        value: 1
+      - name: white_balance_automatic
+        value: 0
+      - name: frame_sync
+        value: 1
+        id: 0x009a092a
+    format: UYVY
+    req_buffer_count: 1
 imus:
   - name: accelerometer
     device: "iio:device0"

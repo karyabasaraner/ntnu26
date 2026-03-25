@@ -58,6 +58,11 @@ void SharedDictReader::read_absolute(DataEntry& entry, uint32_t absolute_index) 
         return;
     }
 
+    if (absolute_index >= _buffer->num_frames) {
+        spdlog::warn("Requested absolute index {} is out of bounds for buffer with num_frames {}", absolute_index, _buffer->num_frames);
+        return;
+    }
+
     // spdlog::info("Reading abs idx {}, head {}", absolute_index, get_head(0));
     DataFrame* frame = get_frame_by_index(absolute_index);
     if (frame == nullptr) {
@@ -65,6 +70,29 @@ void SharedDictReader::read_absolute(DataEntry& entry, uint32_t absolute_index) 
         return;
     }
     _populate_data_enty(entry, frame, absolute_index);
+}
+
+void SharedDictReader::read_oldest(DataEntry& entry) {
+    if (!is_ready()) {
+        spdlog::warn("SharedDictReader is not ready, cannot read oldest");
+        return;
+    }
+
+    // Get frame ahead of the current head
+    uint32_t index = get_head(-1);
+    DataFrame* frame = get_frame_by_index(index);
+
+    // Check if zero frame is valid
+    if (frame == nullptr) {
+        index = 0;
+        frame = get_frame_by_index(index);
+
+        if (frame == nullptr) {
+            spdlog::warn("Failed to get oldest, both with oldest and zero frame");
+            return;
+        }
+    }
+    _populate_data_enty(entry, frame, index);
 }
 
 } // namespace core

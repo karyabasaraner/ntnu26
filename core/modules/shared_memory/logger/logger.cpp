@@ -114,8 +114,18 @@ void SharedDictLogger::run() {
         workers.emplace_back([this, stream_ptr]() {
             try {
                 while (!_stop.load(std::memory_order_acquire)) {
-                    _process_sensor_stream(*stream_ptr);
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    if (stream_ptr->type == StreamType::CAMERA) {
+                        _process_sensor_stream(*stream_ptr);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60Hz is enough here
+
+                    } else if (stream_ptr->type == StreamType::IMU) {
+                        _process_sensor_stream(*stream_ptr);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1)); // ~1000Hz
+
+                    } else {
+                        spdlog::warn("Unknown stream type for {}: {}", stream_ptr->name, static_cast<int>(stream_ptr->type));
+                        break;
+                    }
                 }
             } catch (const std::exception& ex) {
                 spdlog::error("Worker {} failed: {}", stream_ptr->name, ex.what());
@@ -201,11 +211,23 @@ void SharedDictLogger::_process_sensor_stream(SensorStream& stream) {
 
     // 0. Initialize the stream: This is where we start logging
     if (!stream.initialized) {
-        DataEntry latest_written_entry;
-        stream.reader->read_latest(latest_written_entry);
+        DataEntry entry;
 
-        stream.current_head = latest_written_entry.head;
-        stream.current_sequence = latest_written_entry.sequence;
+        // TODO(MJ): latest, zero or oldest?
+        stream.reader->read_latest(entry);
+
+        if (entry.data.empty()) {
+            spdlog::debug("Failed to read initial frame for {}, cannot initialize stream", stream.name);
+            return;
+        }
+
+        if (entry.head >= stream.num_frames) {
+            spdlog::debug("Initial head {} for {} is out of bounds for num_frames {}, cannot initialize stream", entry.head, stream.name, stream.num_frames);
+            return;
+        }
+
+        stream.current_head = entry.head;
+        stream.current_sequence = entry.sequence;
         stream.initialized = true;
         spdlog::info("Initializing sensor stream {}: latest head is {}", stream.name, stream.current_head);
     }
@@ -227,6 +249,8 @@ void SharedDictLogger::_process_sensor_stream(SensorStream& stream) {
         spdlog::warn("Sequence jump for {}: expected {}, got {}", stream.name, stream.current_sequence, entry.sequence);
         stream.current_sequence = entry.sequence;
     }
+
+    // spdlog::info("Entry sequence {}, stream current_sequence {}", entry.sequence, stream.current_sequence);
 
     // 2. Write the data
     std::vector<std::byte> payload;
@@ -264,9 +288,12 @@ void SharedDictLogger::_process_sensor_stream(SensorStream& stream) {
 
     // 4. Log warnings
     if (stream.current_head == stream.num_frames - 1) {
-        const auto current_head = stream.reader->get_head(1);
-        const auto head_distance = (stream.current_head + stream.num_frames - current_head) % stream.num_frames;
-        spdlog::info("Stream {} ok: {}", stream.name, head_distance);
+        const auto head_distance = (stream.current_head - entry.head + stream.num_frames) % stream.num_frames;
+        if (head_distance > stream.num_frames / 2) {
+            spdlog::warn("Stream {}: head distance {}", stream.name, head_distance);
+        } else {
+            spdlog::info("Stream {} ok: head distance {}", stream.name, head_distance);
+        }
     }
 }
 
