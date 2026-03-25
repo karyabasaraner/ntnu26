@@ -1,10 +1,12 @@
-#ifndef WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_LOGGER_HPP
-#define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_LOGGER_HPP
+#ifndef WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_LOGGER_LOGGER_HPP
+#define WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_LOGGER_LOGGER_HPP
 
 #include <mcap/writer.hpp>
 
 #include "../client/reader.hpp"
+#include "/workspaces/core/core/modules/shared_memory/utils.hpp"
 #include "configs.hpp"
+#include "mcap/types.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -17,7 +19,7 @@
 
 namespace core {
 
-enum StreamType {
+enum StreamType : uint8_t {
     CAMERA,
     IMU,
 };
@@ -72,4 +74,4 @@ private:
 
 } // namespace core
 
-#endif // WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_LOGGER_HPP
+#endif // WORKSPACES_CORE_CORE_MODULES_SHARED_MEMORY_LOGGER_LOGGER_HPP

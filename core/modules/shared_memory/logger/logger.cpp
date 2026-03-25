@@ -1,19 +1,28 @@
 #include "logger.hpp"
+#include "/workspaces/core/core/modules/shared_memory/client/reader.hpp"
+#include "/workspaces/core/core/modules/shared_memory/utils.hpp"
+#include "mcap/types.hpp"
+#include "mcap/writer.hpp"
 #include "schema.hpp"
-
-#include <opencv2/core/mat.hpp>
-#include <opencv2/imgcodecs.hpp>
-#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <exception>
+#include <memory>
+#include <mutex>
+#include <opencv2/core/hal/interface.h>
+#include <opencv2/core/mat.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace core {
@@ -96,7 +105,7 @@ void SharedDictLogger::_register_channels() {
 }
 
 SharedDictLogger::~SharedDictLogger() {
-    std::lock_guard<std::mutex> lock(_writer_mutex);
+    std::lock_guard<std::mutex> const lock(_writer_mutex);
     _writer.close();
 }
 
@@ -145,7 +154,7 @@ void SharedDictLogger::run() {
     }
 
     {
-        std::lock_guard<std::mutex> lock(_writer_mutex);
+        std::lock_guard<std::mutex> const lock(_writer_mutex);
         _writer.closeLastChunk();
     }
     spdlog::info("Logger stopping");
@@ -158,15 +167,13 @@ void SharedDictLogger::_get_camera_payload(DataEntry& entry, const SensorStream&
         return;
     }
 
-    cv::Mat rgb(static_cast<int>(stream.height), static_cast<int>(stream.width), CV_8UC3, entry.data.data());
+    cv::Mat const rgb(static_cast<int>(stream.height), static_cast<int>(stream.width), CV_8UC3, entry.data.data());
     std::vector<uint8_t> encoded;
-    std::vector<int> params{cv::IMWRITE_JPEG_QUALITY, _jpeg_quality};
+    std::vector<int> const params{cv::IMWRITE_JPEG_QUALITY, _jpeg_quality};
     if (!cv::imencode(".jpg", rgb, encoded, params)) {
         spdlog::warn("Failed JPEG encoding for {}", stream.name);
         return;
     }
-
-    payload.reserve(sizeof(uint64_t) + 4 * sizeof(uint32_t) + 2 * sizeof(uint8_t) + encoded.size());
 
     _append_value(payload, entry.timestamp_ns);
     _append_value(payload, entry.sequence);
@@ -183,11 +190,12 @@ void SharedDictLogger::_get_camera_payload(DataEntry& entry, const SensorStream&
     _append_value(payload, quality);
     _append_value(payload, jpeg_size);
 
-    payload.insert(
-        payload.end(),
-        reinterpret_cast<const std::byte*>(encoded.data()),
-        reinterpret_cast<const std::byte*>(encoded.data() + encoded.size())
-    );
+    payload.reserve(sizeof(uint64_t) + 4 * sizeof(uint32_t) + 2 * sizeof(uint8_t) + encoded.size());
+    std::transform(
+    encoded.begin(),
+    encoded.end(),
+    std::back_inserter(payload),
+    [](uint8_t encoded_byte) { return static_cast<std::byte>(encoded_byte); });
 }
 
 void SharedDictLogger::_get_imu_payload(const DataEntry& entry, std::vector<std::byte>& payload) {
@@ -274,7 +282,7 @@ void SharedDictLogger::_process_sensor_stream(SensorStream& stream) {
     msg.data = payload.data();
     msg.dataSize = payload.size();
 
-    std::lock_guard<std::mutex> lock(_writer_mutex);
+    std::lock_guard<std::mutex> const lock(_writer_mutex);
     const auto status = _writer.write(msg);
     if (!status.ok()) {
         spdlog::error("Failed to write camera sample for {}: {}", stream.name, status.message);
