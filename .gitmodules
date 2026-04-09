@@ -4,3 +4,6 @@
 [submodule "third-party/libiio"]
 	path = third-party/libiio
 	url = git@github.com:marcojob/libiio.git
+[submodule "third-party/mcap_builder"]
+	path = third-party/mcap_builder
+	url = git@github.com:marcojob/mcap_builder.git
