@@ -16,6 +16,25 @@
                     "ignoreFailures": true
                 }
             ]
+        },
+        {
+            "name": "Debug core-log",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/core-log",
+            "args": [
+                "configs/four-cameras.yaml",
+                "/mnt/storage/log.mcap"
+            ],
+            "MIMode": "gdb",
+            "cwd": "${workspaceFolder}",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
         }
     ]
 }

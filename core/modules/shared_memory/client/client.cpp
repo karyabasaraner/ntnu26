@@ -189,7 +189,7 @@ void SharedDictClient::_get_shm_structure() {
 
         // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast,cppcoreguidelines-pro-bounds-pointer-arithmetic)
         auto* buffer = reinterpret_cast<Buffer*>(static_cast<std::byte*>(_map) + cur_buffer_offset);
-        spdlog::info("{}: Found buffer with name {}", _name, buffer->name);
+        spdlog::debug("{}: Found buffer with name {}", _name, buffer->name);
 
         /// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
         if (buffer->name == _name) {

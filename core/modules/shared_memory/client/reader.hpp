@@ -13,11 +13,14 @@ namespace core {
 class SharedDictReader : public SharedDictClient {
 public:
     explicit SharedDictReader(std::string name);
-    void read(DataEntry& entry, int32_t index_from_head);
+    void read_absolute(DataEntry& entry, uint32_t absolute_index);
     void read_latest(DataEntry& entry) { read(entry, 1); }
+    void read_oldest(DataEntry& entry);
+    void read(DataEntry& entry, int32_t index_from_head);
 
 private:
     Buffer* _buffer{nullptr};
+    void _populate_data_enty(DataEntry& entry, DataFrame* frame, uint32_t head_index);
 };
 
 } // namespace core
