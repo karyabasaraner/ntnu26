@@ -16,16 +16,15 @@ TEST(LoggerSchemaTest, CompressedImageSchemaMatchesExpectedFieldsAndOrder) {
 
     // WHEN: The schema text is inspected
 
-    // THEN: The fields and order match the documented wire format
-    EXPECT_EQ(
-        kCompressedImageSchema,
-        "uint64 source_timestamp_ns\n"
-        "uint32 source_sequence\n"
-        "uint32 width\n"
-        "uint32 height\n"
-        "uint8 channels\n"
-        "uint8 jpeg_quality\n"
-        "bytes jpeg_data\n");
+    // THEN: The schema is the Foxglove compressed image JSON schema
+    EXPECT_EQ(core::CompressedImageSchemaName, std::string_view("foxglove.CompressedImage"));
+    EXPECT_EQ(core::JsonSchemaEncoding, std::string_view("jsonschema"));
+    EXPECT_EQ(core::JsonMessageEncoding, std::string_view("json"));
+    EXPECT_NE(kCompressedImageSchema.find(R"("title": "foxglove.CompressedImage")"), std::string_view::npos);
+    EXPECT_NE(kCompressedImageSchema.find(R"("timestamp")"), std::string_view::npos);
+    EXPECT_NE(kCompressedImageSchema.find(R"("frame_id")"), std::string_view::npos);
+    EXPECT_NE(kCompressedImageSchema.find(R"("data")"), std::string_view::npos);
+    EXPECT_NE(kCompressedImageSchema.find(R"("format")"), std::string_view::npos);
 }
 
 TEST(LoggerSchemaTest, ImuSchemaMatchesExpectedFieldsAndOrder) {
@@ -33,12 +32,14 @@ TEST(LoggerSchemaTest, ImuSchemaMatchesExpectedFieldsAndOrder) {
 
     // WHEN: The schema text is inspected
 
-    // THEN: The fields and order match the documented wire format
-    EXPECT_EQ(
-        kImuSchema,
-        "uint64 source_timestamp_ns\n"
-        "uint32 source_sequence\n"
-        "float32 x\n"
-        "float32 y\n"
-        "float32 z\n");
+    // THEN: The schema is a JSON schema for the core IMU vector format
+    EXPECT_EQ(core::ImuSchemaName, std::string_view("core.ImuXYZ"));
+    EXPECT_EQ(core::JsonSchemaEncoding, std::string_view("jsonschema"));
+    EXPECT_EQ(core::JsonMessageEncoding, std::string_view("json"));
+    EXPECT_NE(kImuSchema.find(R"("title": "core.ImuXYZ")"), std::string_view::npos);
+    EXPECT_NE(kImuSchema.find(R"("timestamp")"), std::string_view::npos);
+    EXPECT_NE(kImuSchema.find(R"("sequence")"), std::string_view::npos);
+    EXPECT_NE(kImuSchema.find(R"("x")"), std::string_view::npos);
+    EXPECT_NE(kImuSchema.find(R"("y")"), std::string_view::npos);
+    EXPECT_NE(kImuSchema.find(R"("z")"), std::string_view::npos);
 }

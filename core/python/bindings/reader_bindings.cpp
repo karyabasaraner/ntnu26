@@ -123,11 +123,8 @@ nb::dict camera_series_to_dict(const core::LoggedCompressedImageSeries& series) 
     nb::dict result;
     result["topic"] = series.topic;
     result["timestamp_ns"] = vector_to_numpy(series.timestamp_ns);
-    result["sequence"] = vector_to_numpy(series.sequence);
-    result["width"] = vector_to_numpy(series.width);
-    result["height"] = vector_to_numpy(series.height);
-    result["channels"] = vector_to_numpy(series.channels);
-    result["jpeg_quality"] = vector_to_numpy(series.jpeg_quality);
+    result["frame_id"] = series.frame_id;
+    result["format"] = series.format;
 
     nb::list jpeg_data;
     for (const auto& sample : series.jpeg_data) {
@@ -208,4 +205,9 @@ NB_MODULE(core, module) {
         nb::gil_scoped_release const rel;
         return core::read_log_file(path);
     }, "path"_a, "Read a core MCAP log file into memory");
+
+    module.def("convert_legacy_log_file_to_foxglove", [](const std::string& input_path, const std::string& output_path) {
+        nb::gil_scoped_release const rel;
+        core::convert_legacy_log_file_to_foxglove(input_path, output_path);
+    }, "input_path"_a, "output_path"_a, "Convert a legacy binary core MCAP log to the Foxglove-compatible JSON format");
 }

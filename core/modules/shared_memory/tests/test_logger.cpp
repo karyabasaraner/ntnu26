@@ -4,6 +4,7 @@
 #include "../client/client.hpp"
 #include "../client/reader.hpp"
 #include "../client/writer.hpp"
+#include "../logger/log_reader.hpp"
 #include "../logger/logger.hpp"
 #include "../logger/schema.hpp"
 #include "../master.hpp"
@@ -14,7 +15,6 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <filesystem>
 #include <mcap/reader.hpp>
 #include <mcap/types.hpp>
@@ -23,11 +23,15 @@
 #include <mutex>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace {
 
 const std::string kTestConfigPath = "ci/configs/ci-four-cameras.yaml";
+constexpr int64_t kTestSteadyToUnixOffsetNs = 1'700'000'000'000'000'000LL;
+
+using TimestampMapper = core::SharedDictStreamProcessor::SteadyClockUnixTimeMapper;
 
 class TempMcapPath {
 public:
@@ -54,14 +58,6 @@ private:
     std::filesystem::path _path;
 };
 
-template <typename T>
-T read_value(const std::byte* data, std::size_t offset) {
-    T value{};
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    std::memcpy(&value, data + offset, sizeof(T));
-    return value;
-}
-
 struct DecodedImuMessage {
     std::string topic;
     uint64_t timestamp_ns{0};
@@ -71,54 +67,46 @@ struct DecodedImuMessage {
     float z{0.0F};
 };
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 std::vector<DecodedImuMessage> read_imu_messages(const std::string& mcap_path) {
-    // NOLINTNEXTLINE(misc-const-correctness)
-    mcap::McapReader reader;
-    const auto open_status = reader.open(mcap_path);
-    EXPECT_TRUE(open_status.ok()) << open_status.message;
-    if (!open_status.ok()) {
-        return {};
-    }
-
-    const auto summary_status = reader.readSummary(mcap::ReadSummaryMethod::AllowFallbackScan);
-    EXPECT_TRUE(summary_status.ok()) << summary_status.message;
-    if (!summary_status.ok()) {
-        return {};
-    }
-
-    // NOLINTNEXTLINE(misc-const-correctness)
+    const auto log_file = core::read_log_file(mcap_path);
     std::vector<DecodedImuMessage> messages;
-    for (const auto& view : reader.readMessages()) {
-        if (view.channel == nullptr || !view.channel->topic.starts_with("/imu/")) {
+    for (const auto& topic : log_file.imu_topics()) {
+        const auto* series = log_file.get_imu_data(topic);
+        if (series == nullptr) {
             continue;
         }
-
-        EXPECT_NE(view.message.data, nullptr);
-        EXPECT_EQ(view.message.dataSize, sizeof(uint64_t) + sizeof(uint32_t) + 3 * sizeof(float));
-        if (view.message.data == nullptr ||
-            view.message.dataSize != sizeof(uint64_t) + sizeof(uint32_t) + 3 * sizeof(float)) {
-            continue;
+        for (std::size_t index = 0; index < series->timestamp_ns.size(); ++index) {
+            messages.push_back(DecodedImuMessage{
+                .topic = topic,
+                .timestamp_ns = series->timestamp_ns[index],
+                .sequence = series->sequence[index],
+                .x = series->x[index],
+                .y = series->y[index],
+                .z = series->z[index],
+            });
         }
-
-        const auto* payload = view.message.data;
-        constexpr std::size_t timestamp_offset = 0;
-        constexpr std::size_t sequence_offset = sizeof(uint64_t);
-        constexpr std::size_t x_offset = sequence_offset + sizeof(uint32_t);
-        constexpr std::size_t y_offset = x_offset + sizeof(float);
-        constexpr std::size_t z_offset = y_offset + sizeof(float);
-
-        messages.push_back(DecodedImuMessage{
-            .topic = view.channel->topic,
-            .timestamp_ns = read_value<uint64_t>(payload, timestamp_offset),
-            .sequence = read_value<uint32_t>(payload, sequence_offset),
-            .x = read_value<float>(payload, x_offset),
-            .y = read_value<float>(payload, y_offset),
-            .z = read_value<float>(payload, z_offset),
-        });
     }
 
     return messages;
+}
+
+std::vector<std::pair<uint64_t, uint64_t>> read_mcap_message_times(const std::string& mcap_path) {
+    // NOLINTNEXTLINE(misc-const-correctness): MCAP reader methods mutate parser state while opening and reading.
+    mcap::McapReader reader;
+    const auto open_status = reader.open(mcap_path);
+    EXPECT_TRUE(open_status.ok()) << open_status.message;
+    const auto summary_status = reader.readSummary(mcap::ReadSummaryMethod::AllowFallbackScan);
+    EXPECT_TRUE(summary_status.ok()) << summary_status.message;
+
+    // NOLINTNEXTLINE(misc-const-correctness): populated while iterating MCAP messages below.
+    std::vector<std::pair<uint64_t, uint64_t>> timestamps;
+    for (const auto& view : reader.readMessages()) {
+        if (view.schema == nullptr || view.schema->name != core::ImuSchemaName) {
+            continue;
+        }
+        timestamps.emplace_back(view.message.publishTime, view.message.logTime);
+    }
+    return timestamps;
 }
 
 void open_writer(mcap::McapWriter& writer, const std::string& path) {
@@ -129,10 +117,10 @@ void open_writer(mcap::McapWriter& writer, const std::string& path) {
 }
 
 core::SensorStream make_accelerometer_stream(mcap::McapWriter& writer) {
-    mcap::Schema imu_schema("core/ImuXYZ", "schema", core::ImuSchema.data());
+    mcap::Schema imu_schema(core::ImuSchemaName, core::JsonSchemaEncoding, core::ImuSchema.data());
     writer.addSchema(imu_schema);
 
-    mcap::Channel imu_channel("/imu/accelerometer", "binary", imu_schema.id);
+    mcap::Channel imu_channel("/imu/accelerometer", core::JsonMessageEncoding, imu_schema.id);
     writer.addChannel(imu_channel);
 
     core::SensorStream stream;
@@ -159,7 +147,7 @@ TEST(LoggerTest, ProcessSensorStreamWritesImuSampleToMcap) {
         mcap::McapWriter writer;
         open_writer(writer, output_path.string());
         std::mutex writer_mutex;
-        core::SharedDictStreamProcessor stream_processor(writer, writer_mutex, 90);
+        core::SharedDictStreamProcessor stream_processor(writer, writer_mutex, 90, TimestampMapper(kTestSteadyToUnixOffsetNs));
         auto stream = make_accelerometer_stream(writer);
 
         ASSERT_NE(stream.reader, nullptr);
@@ -191,11 +179,16 @@ TEST(LoggerTest, ProcessSensorStreamWritesImuSampleToMcap) {
     const auto messages = read_imu_messages(output_path.string());
     ASSERT_EQ(messages.size(), 1U);
     EXPECT_EQ(messages[0].topic, "/imu/accelerometer");
-    EXPECT_EQ(messages[0].timestamp_ns, 424242U);
+    EXPECT_EQ(messages[0].timestamp_ns, 1'700'000'000'000'424'242ULL);
     EXPECT_EQ(messages[0].sequence, 41U);
     EXPECT_FLOAT_EQ(messages[0].x, 1.25F);
     EXPECT_FLOAT_EQ(messages[0].y, -2.5F);
     EXPECT_FLOAT_EQ(messages[0].z, 3.75F);
+
+    const auto mcap_times = read_mcap_message_times(output_path.string());
+    ASSERT_EQ(mcap_times.size(), 1U);
+    EXPECT_EQ(mcap_times[0].first, 1'700'000'000'000'424'242ULL);
+    EXPECT_EQ(mcap_times[0].second, 1'700'000'000'000'424'242ULL);
 }
 
 TEST(LoggerTest, ProcessSensorStreamWithUnavailableSharedMemoryWritesNoMessages) {
@@ -206,7 +199,7 @@ TEST(LoggerTest, ProcessSensorStreamWithUnavailableSharedMemoryWritesNoMessages)
         mcap::McapWriter writer;
         open_writer(writer, output_path.string());
         std::mutex writer_mutex;
-        core::SharedDictStreamProcessor stream_processor(writer, writer_mutex, 90);
+        core::SharedDictStreamProcessor stream_processor(writer, writer_mutex, 90, TimestampMapper(kTestSteadyToUnixOffsetNs));
         auto stream = make_accelerometer_stream(writer);
 
         ASSERT_NE(stream.reader, nullptr);
@@ -222,4 +215,18 @@ TEST(LoggerTest, ProcessSensorStreamWithUnavailableSharedMemoryWritesNoMessages)
     // THEN: No IMU messages are written
     const auto messages = read_imu_messages(output_path.string());
     EXPECT_TRUE(messages.empty());
+}
+
+TEST(LoggerTest, SteadyClockUnixTimeMapperPreservesTimestampDurations) {
+    // GIVEN: A deterministic steady-to-Unix timestamp mapper
+    const TimestampMapper mapper(1'700'000'000'000'000'000LL);
+
+    // WHEN: Two steady-clock timestamps are mapped into Unix time
+    const auto first_timestamp = mapper.to_unix_time_ns(1'000U);
+    const auto second_timestamp = mapper.to_unix_time_ns(2'500U);
+
+    // THEN: The absolute timestamps are shifted while their interval remains unchanged
+    EXPECT_EQ(first_timestamp, 1'700'000'000'000'001'000ULL);
+    EXPECT_EQ(second_timestamp, 1'700'000'000'000'002'500ULL);
+    EXPECT_EQ(second_timestamp - first_timestamp, 1'500U);
 }

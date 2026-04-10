@@ -26,11 +26,8 @@ struct LoggedImuSeries {
 struct LoggedCompressedImageSeries {
     std::string topic;
     std::vector<uint64_t> timestamp_ns;
-    std::vector<uint32_t> sequence;
-    std::vector<uint32_t> width;
-    std::vector<uint32_t> height;
-    std::vector<uint8_t> channels;
-    std::vector<uint8_t> jpeg_quality;
+    std::vector<std::string> frame_id;
+    std::vector<std::string> format;
     std::vector<std::vector<std::byte>> jpeg_data;
 };
 
@@ -74,6 +71,7 @@ private:
 
 [[nodiscard]] LogFile read_log_file(const std::string& path);
 [[nodiscard]] std::string format_log_metadata(const LogMetadata& metadata);
+void convert_legacy_log_file_to_foxglove(const std::string& input_path, const std::string& output_path);
 
 } // namespace core
 
