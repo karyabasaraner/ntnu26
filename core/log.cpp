@@ -6,22 +6,26 @@
 
 #include "modules/shared_memory/logger/logger.hpp"
 
+namespace {
+
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static std::atomic<bool> g_running{true};
+std::atomic<bool> g_running{true};
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static core::SharedDictLogger* g_logger{nullptr};
+core::SharedDictLogger* g_logger{nullptr};
 
 // NOLINTNEXTLINE(misc-unused-parameters)
-static void handle_signal(int signal) {
+void handle_signal(int signal) {
     g_running.store(false, std::memory_order_relaxed);
     if (g_logger != nullptr) {
         g_logger->request_stop();
     }
 }
 
-static void print_usage(const char* argv0) {
+void print_usage(const char* argv0) {
     std::cerr << "Usage: " << argv0 << " <config_path> <output_mcap>\n";
 }
+
+} // namespace
 
 int main(int argc, char** argv) {
     if (argc < 3) {

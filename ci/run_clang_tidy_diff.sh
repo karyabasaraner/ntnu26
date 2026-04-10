@@ -31,13 +31,21 @@ if $ALL_MODE; then
   echo "clang-tidy all completed."
 else
   # Generate diff
-  git diff -U0 $DIFF_BASE | \
-    python3 $CLANG_TIDY_DIFF \
+  DIFF_FILE=$(mktemp)
+  trap 'rm -f "$DIFF_FILE"' EXIT
+
+  # Include changes against the base branch plus synthetic diffs for untracked files.
+  git diff -U0 "$DIFF_BASE" > "$DIFF_FILE"
+  while IFS= read -r file; do
+    git diff -U0 --no-index -- /dev/null "$file" >> "$DIFF_FILE" || true
+  done < <(git ls-files --others --exclude-standard)
+
+  python3 "$CLANG_TIDY_DIFF" \
       -p1 \
       -clang-tidy-binary clang-tidy-18 \
-      -path $COMPILE_COMMANDS \
+      -path "$COMPILE_COMMANDS" \
       -export-fixes=clang-tidy-fixes.yaml \
       -fix \
-      -j $(nproc)
+      -j "$(nproc)" < "$DIFF_FILE"
   echo "clang-tidy diff completed."
 fi

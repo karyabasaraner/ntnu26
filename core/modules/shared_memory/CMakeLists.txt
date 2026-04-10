@@ -4,7 +4,7 @@ find_package(CUDAToolkit REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgcodecs)
 
-add_library(shared_memory SHARED master.cpp client/client.cpp client/writer.cpp client/reader.cpp transforms.cpp logger/logger.cpp)
+add_library(shared_memory SHARED master.cpp client/client.cpp client/writer.cpp client/reader.cpp transforms.cpp logger/logger.cpp logger/log_reader.cpp)
 target_include_directories(shared_memory PUBLIC ${CMAKE_SOURCE_DIR}/core/utils)
 target_include_directories(shared_memory PUBLIC ${ZLIB_INCLUDE_DIRS})
 
@@ -22,6 +22,7 @@ if(ENABLE_TESTING)
     add_executable(test_transforms tests/test_transforms.cpp)
     add_executable(test_logger_schema tests/test_logger_schema.cpp)
     add_executable(test_logger tests/test_logger.cpp)
+    add_executable(test_log_reader tests/test_log_reader.cpp)
 
     set_target_properties(test_shared_memory PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
@@ -38,6 +39,9 @@ if(ENABLE_TESTING)
     set_target_properties(test_logger PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
     )
+    set_target_properties(test_log_reader PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+    )
 
     target_link_libraries(test_shared_memory
                           gtest_main
@@ -52,10 +56,14 @@ if(ENABLE_TESTING)
     target_link_libraries(test_logger
                           gtest_main
                           shared_memory)
+    target_link_libraries(test_log_reader
+                          gtest_main
+                          shared_memory)
 
     add_test(NAME SharedMemoryTest COMMAND test_shared_memory)
     add_test(NAME SharedMemoryLayoutTest COMMAND test_shared_memory_layout)
     add_test(NAME SharedMemoryTransformsTest COMMAND test_transforms)
     add_test(NAME SharedMemoryLoggerSchemaTest COMMAND test_logger_schema)
     add_test(NAME SharedMemoryLoggerTest COMMAND test_logger)
+    add_test(NAME SharedMemoryLogReaderTest COMMAND test_log_reader)
 endif()
