@@ -248,7 +248,9 @@ void SharedDictClient::_get_shm_map() {
 
     _map = mmap(nullptr, _shm_total_size, PROT_READ | PROT_WRITE, MAP_SHARED, _fd_shm, 0);
     if (_map == MAP_FAILED) {
+        _map = nullptr;
         ::close(_fd_shm);
+        _fd_shm = -1;
         spdlog::error("mmap failed in client");
         throw std::runtime_error("mmap failed in client");
     }

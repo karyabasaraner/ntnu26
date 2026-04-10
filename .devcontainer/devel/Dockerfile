@@ -24,6 +24,9 @@ RUN usermod -u ${USER_UID} -aG dialout,plugdev,video,sudo ${USERNAME} && \
 # Git-prompt: Source
 RUN echo 'if [ -f "$HOME/.bash-git-prompt/gitprompt.sh" ]; then GIT_PROMPT_ONLY_IN_REPO=1; source "$HOME/.bash-git-prompt/gitprompt.sh"; fi' >> /home/${USERNAME}/.bash_aliases
 
+# Install codex
+RUN npm i -g @openai/codex
+
 # Clean up
 RUN rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* /var/cache/apt/archives/*
 

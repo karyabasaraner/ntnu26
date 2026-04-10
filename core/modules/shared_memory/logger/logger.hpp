@@ -4,7 +4,7 @@
 #include <mcap/writer.hpp>
 
 #include "../client/reader.hpp"
-#include "/workspaces/core/core/modules/shared_memory/utils.hpp"
+#include "../utils.hpp"
 #include "configs.hpp"
 #include "mcap/types.hpp"
 
@@ -18,6 +18,8 @@
 #include <vector>
 
 namespace core {
+
+class SharedDictLoggerTestPeer;
 
 enum StreamType : uint8_t {
     CAMERA,
@@ -52,6 +54,8 @@ public:
     void request_stop();
 
 private:
+    friend class SharedDictLoggerTestPeer;
+
     Config _config;
     int _jpeg_quality{90};
     mcap::McapWriter _writer;

@@ -67,10 +67,4 @@ if(TARGET zstd::libzstd_shared AND NOT TARGET zstd::libzstd)
   )
 endif()
 
-include(FetchContent)
-FetchContent_Declare(
-  mcap_builder
-  GIT_REPOSITORY git@github.com:marcojob/mcap_builder.git
-  GIT_TAG main
-)
-FetchContent_MakeAvailable(mcap_builder)
+add_subdirectory(${CMAKE_SOURCE_DIR}/third-party/mcap_builder)

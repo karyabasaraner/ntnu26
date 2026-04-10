@@ -35,6 +35,16 @@ TEST(CameraModuleTest, StartStopCameras) {
     EXPECT_EQ(camera_module.get_running_cameras(), 0);
 }
 
+TEST(CameraModuleTest, StartStopCameraByIndexZero) {
+    core::CameraModule camera_module(TEST_CONFIG_PATH);
+
+    camera_module.start_cameras(0);
+    EXPECT_EQ(camera_module.get_running_cameras(), 1);
+
+    camera_module.stop_cameras(0);
+    EXPECT_EQ(camera_module.get_running_cameras(), 0);
+}
+
 TEST(CameraModuleTest, StartWithWritingAndReading) {
     // GIVEN: A shm master that is setup
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);

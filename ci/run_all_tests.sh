@@ -1,6 +1,22 @@
 #!/bin/bash
 set -e
 
+_mounted_configfs=0
+
+cleanup() {
+    sudo rmdir /sys/kernel/config/iio/devices/dummy/accerelometer 2>/dev/null || true
+    sudo rmdir /sys/kernel/config/iio/devices/dummy/gyroscope 2>/dev/null || true
+    sudo modprobe -r vivid 2>/dev/null || true
+    sudo modprobe -r iio_dummy 2>/dev/null || true
+    sudo modprobe -r iio_trig_hrtimer 2>/dev/null || true
+
+    if [[ "${_mounted_configfs}" -eq 1 ]]; then
+        sudo umount /sys/kernel/config 2>/dev/null || true
+    fi
+}
+
+trap cleanup EXIT
+
 # Mock cameras
 sudo modprobe vivid n_devs=4 node_types=0x1,0x1,0x1,0x1 num_inputs=1 vid_cap_nr=0,1,2,3
 
@@ -10,7 +26,10 @@ sudo modprobe iio_dummy
 sudo modprobe iio_trig_hrtimer # for triggers
 
 # 2. Mount configfs
-sudo mount -t configfs none /sys/kernel/config
+if ! mountpoint -q /sys/kernel/config; then
+    sudo mount -t configfs none /sys/kernel/config
+    _mounted_configfs=1
+fi
 
 # 3. Create 2 virtual IMU devices (accelerometer and gyroscope)
 sudo mkdir -p /sys/kernel/config/iio/devices/dummy/accerelometer
@@ -56,15 +75,5 @@ if [[ $tests_run -eq 0 ]]; then
     echo "No matching tests found." >&2
     err=1
 fi
-
-# Remove the mocked cameras
-sudo modprobe -r vivid
-
-# Remove the mocked IMUs
-sudo rmdir /sys/kernel/config/iio/devices/dummy/accerelometer
-sudo rmdir /sys/kernel/config/iio/devices/dummy/gyroscope
-sudo modprobe -r iio_dummy
-sudo modprobe -r iio_trig_hrtimer
-sudo umount /sys/kernel/config
 
 exit $err

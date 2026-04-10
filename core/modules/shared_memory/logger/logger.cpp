@@ -1,6 +1,4 @@
 #include "logger.hpp"
-#include "/workspaces/core/core/modules/shared_memory/client/reader.hpp"
-#include "/workspaces/core/core/modules/shared_memory/utils.hpp"
 #include "mcap/types.hpp"
 #include "mcap/writer.hpp"
 #include "schema.hpp"

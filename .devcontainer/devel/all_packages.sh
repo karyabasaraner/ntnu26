@@ -33,6 +33,7 @@ main() {
         libxml2-dev
         libyaml-cpp-dev
         libzstd-dev
+        npm
         python3-dev
         python3.12-venv
         rsync

@@ -18,14 +18,44 @@ target_compile_options(core_utils_configs PRIVATE -fPIC) # TODO: WHy is this nee
 
 if(ENABLE_TESTING)
     add_executable(test_shared_memory tests/test_shared_dict.cpp)
+    add_executable(test_shared_memory_layout tests/test_ringbuffer_layout.cpp)
+    add_executable(test_transforms tests/test_transforms.cpp)
+    add_executable(test_logger_schema tests/test_logger_schema.cpp)
+    add_executable(test_logger tests/test_logger.cpp)
 
     set_target_properties(test_shared_memory PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+    )
+    set_target_properties(test_shared_memory_layout PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+    )
+    set_target_properties(test_transforms PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+    )
+    set_target_properties(test_logger_schema PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+    )
+    set_target_properties(test_logger PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
     )
 
     target_link_libraries(test_shared_memory
                           gtest_main
                           shared_memory)
+    target_link_libraries(test_shared_memory_layout
+                          gtest_main)
+    target_link_libraries(test_transforms
+                          gtest_main
+                          shared_memory)
+    target_link_libraries(test_logger_schema
+                          gtest_main)
+    target_link_libraries(test_logger
+                          gtest_main
+                          shared_memory)
 
     add_test(NAME SharedMemoryTest COMMAND test_shared_memory)
+    add_test(NAME SharedMemoryLayoutTest COMMAND test_shared_memory_layout)
+    add_test(NAME SharedMemoryTransformsTest COMMAND test_transforms)
+    add_test(NAME SharedMemoryLoggerSchemaTest COMMAND test_logger_schema)
+    add_test(NAME SharedMemoryLoggerTest COMMAND test_logger)
 endif()

@@ -30,7 +30,7 @@ uint8_t CameraModule::get_running_cameras() const {
 }
 
 void CameraModule::start_cameras(size_t index) {
-    if (index > 0 && index < _cameras.size()) {
+    if (index < _cameras.size()) {
         auto& camera = _cameras[index];
         if (camera && camera->is_valid()) {
             camera->start();
@@ -45,7 +45,7 @@ void CameraModule::start_cameras(size_t index) {
 }
 
 void CameraModule::stop_cameras(size_t index) {
-    if (index > 0 && index < _cameras.size()) {
+    if (index < _cameras.size()) {
         auto& camera = _cameras[index];
         if (camera && camera->is_valid()) {
             camera->stop();
