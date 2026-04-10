@@ -1,4 +1,6 @@
 #include "logger.hpp"
+#include "../client/reader.hpp"
+#include "../utils.hpp"
 #include "mcap/types.hpp"
 #include "mcap/writer.hpp"
 #include "schema.hpp"
@@ -11,6 +13,7 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <opencv2/core/hal/interface.h>
@@ -25,7 +28,9 @@
 
 namespace core {
 
-SharedDictLogger::SharedDictLogger(const std::string& config_path, std::string output_path) : _output_path(std::move(output_path)) {
+SharedDictLogger::SharedDictLogger(const std::string& config_path, std::string output_path) :
+    _output_path(std::move(output_path)),
+    _stream_processor(_writer, _writer_mutex, _jpeg_quality) {
     _config.load(config_path);
     _initialize_streams();
     _open_writer();
@@ -122,11 +127,11 @@ void SharedDictLogger::run() {
             try {
                 while (!_stop.load(std::memory_order_acquire)) {
                     if (stream_ptr->type == StreamType::CAMERA) {
-                        _process_sensor_stream(*stream_ptr);
+                        _stream_processor.process(*stream_ptr);
                         std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60Hz is enough here
 
                     } else if (stream_ptr->type == StreamType::IMU) {
-                        _process_sensor_stream(*stream_ptr);
+                        _stream_processor.process(*stream_ptr);
                         std::this_thread::sleep_for(std::chrono::milliseconds(1)); // ~1000Hz
 
                     } else {
@@ -158,7 +163,12 @@ void SharedDictLogger::run() {
     spdlog::info("Logger stopping");
 }
 
-void SharedDictLogger::_get_camera_payload(DataEntry& entry, const SensorStream& stream, std::vector<std::byte>& payload) {
+SharedDictStreamProcessor::SharedDictStreamProcessor(mcap::McapWriter& writer, std::mutex& writer_mutex, int jpeg_quality) :
+    _writer(&writer),
+    _writer_mutex(&writer_mutex),
+    _jpeg_quality(jpeg_quality) {}
+
+void SharedDictStreamProcessor::_get_camera_payload(DataEntry& entry, const SensorStream& stream, std::vector<std::byte>& payload) {
     const size_t expected_size = stream.width * stream.height * 3;
     if (entry.data.size() < expected_size) {
         spdlog::warn("Camera {} sample too small: {} < {}", stream.name, entry.data.size(), expected_size);
@@ -196,7 +206,7 @@ void SharedDictLogger::_get_camera_payload(DataEntry& entry, const SensorStream&
     [](uint8_t encoded_byte) { return static_cast<std::byte>(encoded_byte); });
 }
 
-void SharedDictLogger::_get_imu_payload(const DataEntry& entry, std::vector<std::byte>& payload) {
+void SharedDictStreamProcessor::_get_imu_payload(const DataEntry& entry, std::vector<std::byte>& payload) {
     std::array<float, 3> xyz{};
     std::memcpy(xyz.data(), entry.data.data(), 3 * sizeof(float));
 
@@ -210,7 +220,7 @@ void SharedDictLogger::_get_imu_payload(const DataEntry& entry, std::vector<std:
 }
 
 
-void SharedDictLogger::_process_sensor_stream(SensorStream& stream) {
+void SharedDictStreamProcessor::process(SensorStream& stream) {
     if (stream.reader == nullptr || !stream.reader->is_ready()) {
         return;
     }
@@ -280,8 +290,8 @@ void SharedDictLogger::_process_sensor_stream(SensorStream& stream) {
     msg.data = payload.data();
     msg.dataSize = payload.size();
 
-    std::lock_guard<std::mutex> const lock(_writer_mutex);
-    const auto status = _writer.write(msg);
+    std::lock_guard<std::mutex> const lock(*_writer_mutex);
+    const auto status = _writer->write(msg);
     if (!status.ok()) {
         spdlog::error("Failed to write camera sample for {}: {}", stream.name, status.message);
         return;
@@ -304,7 +314,8 @@ void SharedDictLogger::_process_sensor_stream(SensorStream& stream) {
 }
 
 template <typename T>
-void SharedDictLogger::_append_value(std::vector<std::byte>& out, const T& value) {
+void SharedDictStreamProcessor::_append_value(std::vector<std::byte>& out, const T& value) {
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
     const auto* ptr = reinterpret_cast<const std::byte*>(&value);
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
     out.insert(out.end(), ptr, ptr + sizeof(T));

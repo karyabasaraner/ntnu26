@@ -12,6 +12,11 @@ constexpr std::string_view kImuSchema(core::ImuSchema.data());
 } // namespace
 
 TEST(LoggerSchemaTest, CompressedImageSchemaMatchesExpectedFieldsAndOrder) {
+    // GIVEN: The compressed image MCAP schema is published by the logger
+
+    // WHEN: The schema text is inspected
+
+    // THEN: The fields and order match the documented wire format
     EXPECT_EQ(
         kCompressedImageSchema,
         "uint64 source_timestamp_ns\n"
@@ -24,6 +29,11 @@ TEST(LoggerSchemaTest, CompressedImageSchemaMatchesExpectedFieldsAndOrder) {
 }
 
 TEST(LoggerSchemaTest, ImuSchemaMatchesExpectedFieldsAndOrder) {
+    // GIVEN: The IMU MCAP schema is published by the logger
+
+    // WHEN: The schema text is inspected
+
+    // THEN: The fields and order match the documented wire format
     EXPECT_EQ(
         kImuSchema,
         "uint64 source_timestamp_ns\n"

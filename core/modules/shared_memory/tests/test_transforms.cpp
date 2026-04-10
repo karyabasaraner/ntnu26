@@ -34,6 +34,7 @@ core::TransformConfig make_uyvy_config() {
 } // namespace
 
 TEST(TransformsTest, UYVY2RgbInvalidInputSizeLeavesEntryUnchangedWithoutWrappedTransform) {
+    // GIVEN: A UYVY2RGB transform has an input whose payload is too small
     core::DataEntry entry{
         .key = "camera",
         .data = {1U, 2U, 3U},
@@ -45,8 +46,10 @@ TEST(TransformsTest, UYVY2RgbInvalidInputSizeLeavesEntryUnchangedWithoutWrappedT
     const core::DataEntry original_entry = entry;
     core::UYVY2RGB transform(2, 2, make_uyvy_config(), nullptr);
 
+    // WHEN: The transform is applied
     transform.apply(entry);
 
+    // THEN: The entry is left unchanged
     EXPECT_EQ(entry.key, original_entry.key);
     EXPECT_EQ(entry.data, original_entry.data);
     EXPECT_EQ(entry.head, original_entry.head);
@@ -55,6 +58,7 @@ TEST(TransformsTest, UYVY2RgbInvalidInputSizeLeavesEntryUnchangedWithoutWrappedT
 }
 
 TEST(TransformsTest, UYVY2RgbAppliesWrappedTransformBeforeValidatingInputSize) {
+    // GIVEN: A UYVY2RGB transform wraps another transform
     bool wrapped_transform_called = false;
     core::DataEntry entry{
         .key = "camera",
@@ -67,8 +71,10 @@ TEST(TransformsTest, UYVY2RgbAppliesWrappedTransformBeforeValidatingInputSize) {
     auto wrapped_transform = std::make_unique<TrackingTransform>(wrapped_transform_called);
     core::UYVY2RGB transform(2, 2, make_uyvy_config(), std::move(wrapped_transform));
 
+    // WHEN: The transform is applied to an input with an invalid payload size
     transform.apply(entry);
 
+    // THEN: The wrapped transform runs before input-size validation stops conversion
     EXPECT_TRUE(wrapped_transform_called);
     EXPECT_EQ(entry.key, "wrapped");
     EXPECT_EQ(entry.data, std::vector<uint8_t>({9U, 8U, 7U}));

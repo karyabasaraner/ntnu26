@@ -106,6 +106,8 @@ core::WriterConfig test_writer_config() {
 } // namespace
 
 TEST(SharedDictTest, InitializeSharedDictMaster) {
+    // GIVEN: A config declares shared-memory buffers for 4 cameras and 2 IMUs
+
     // WHEN: SharedDictMaster is initialized with config with 4 cameras
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
 
@@ -115,14 +117,17 @@ TEST(SharedDictTest, InitializeSharedDictMaster) {
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 TEST(SharedDictTest, MasterInitializesExpectedBufferMetadata) {
+    // GIVEN: SharedDictMaster is initialized from the test config
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
     core::Config config;
     config.load(TEST_CONFIG_PATH);
 
+    // WHEN: The shared-memory layout is inspected directly
     const ScopedShmView shm_view;
     core::Layout* const layout = shm_view.layout();
     ASSERT_NE(layout, nullptr);
 
+    // THEN: The layout contains one buffer per shared-memory config entry
     const auto& shared_memory_config = config.get_config().shared_memory;
     ASSERT_EQ(layout->num_buffers, shared_memory_config.size());
 
@@ -142,23 +147,29 @@ TEST(SharedDictTest, MasterInitializesExpectedBufferMetadata) {
         EXPECT_EQ(buffer->num_frames, expected_buffer.num_frames);
         EXPECT_EQ(buffer->size_per_frame, expected_buffer.size_per_frame);
 
+        // WHEN: The next variable-sized buffer offset is calculated
         current_offset += offsetof(core::Buffer, frames) +
                           expected_buffer.num_frames *
                               (offsetof(core::DataFrame, data) + expected_buffer.size_per_frame);
     }
 
+    // THEN: Buffer metadata covers the full mapped shared-memory size
     EXPECT_EQ(current_offset, shm_view.size());
 }
 
 TEST(SharedDictTest, MasterDestructorUnlinksSharedMemoryNamespace) {
+    // GIVEN: SharedDictMaster created a shared-memory namespace
     {
         const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
         const ScopedShmView shm_view;
         EXPECT_NE(shm_view.layout(), nullptr);
     }
 
+    // WHEN: The master is destroyed and the namespace is opened again
     errno = 0;
     const int shm_fd = shm_open(core::SHM_NAME.c_str(), O_RDWR, 0666);
+
+    // THEN: The shared-memory namespace has been unlinked
     EXPECT_EQ(shm_fd, -1);
     EXPECT_EQ(errno, ENOENT);
 }
@@ -187,15 +198,19 @@ TEST(ShareDictTest, InitializeSharedDictClientWithMaster) {
 }
 
 TEST(ShareDictTest, SharedDictClientIsNotReadyWhenNamedBufferIsMissing) {
+    // GIVEN: SharedDictMaster is initialized without a buffer named missing_buffer
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
 
+    // WHEN: A client is created for the missing buffer
     core::SharedDictClient const shared_dict_client("missing_buffer");
 
+    // THEN: The client is not ready and exposes no buffer pointer
     EXPECT_FALSE(shared_dict_client.is_ready());
     EXPECT_EQ(shared_dict_client.get_buffer(), nullptr);
 }
 
 TEST(ShareDictTest, GetHeadWrapsRelativeToRingbufferHead) {
+    // GIVEN: A shared-memory client has a wrapped ringbuffer head
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
     const core::SharedDictClient shared_dict_client("right");
 
@@ -207,12 +222,16 @@ TEST(ShareDictTest, GetHeadWrapsRelativeToRingbufferHead) {
     const uint32_t current_head = buffer->head.load(std::memory_order_acquire);
     const auto num_frames = static_cast<int32_t>(buffer->num_frames);
 
+    // WHEN: Relative head indexes are requested
+
+    // THEN: The indexes wrap around the ringbuffer size
     EXPECT_EQ(shared_dict_client.get_head(0), current_head);
     EXPECT_EQ(shared_dict_client.get_head(1), static_cast<uint32_t>((static_cast<int32_t>(current_head) - 1 + num_frames) % num_frames));
     EXPECT_EQ(shared_dict_client.get_head(-1), static_cast<uint32_t>((static_cast<int32_t>(current_head) + 1) % num_frames));
 }
 
 TEST(ShareDictTest, GetFrameByIndexReturnsExpectedFrameStride) {
+    // GIVEN: A shared-memory client is ready for a named buffer
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
     core::SharedDictClient shared_dict_client("right");
 
@@ -224,6 +243,7 @@ TEST(ShareDictTest, GetFrameByIndexReturnsExpectedFrameStride) {
     core::DataFrame* const first_frame = shared_dict_client.get_frame_by_index(0);
     core::DataFrame* const second_frame = shared_dict_client.get_frame_by_index(1);
 
+    // WHEN: Adjacent frame addresses are compared
     ASSERT_NE(first_frame, nullptr);
     ASSERT_NE(second_frame, nullptr);
 
@@ -235,10 +255,12 @@ TEST(ShareDictTest, GetFrameByIndexReturnsExpectedFrameStride) {
     const auto expected_stride =
         static_cast<std::ptrdiff_t>(offsetof(core::DataFrame, data) + buffer->size_per_frame);
 
+    // THEN: Frame pointers advance by the payload stride
     EXPECT_EQ(actual_stride, expected_stride);
 }
 
 TEST(ShareDictTest, ReaderReadAbsoluteReturnsFramePayloadAndMetadata) {
+    // GIVEN: A shared-memory reader and client are ready for an accelerometer buffer
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
     core::SharedDictClient shared_dict_client("accelerometer");
     core::SharedDictReader shared_dict_reader("accelerometer");
@@ -254,6 +276,8 @@ TEST(ShareDictTest, ReaderReadAbsoluteReturnsFramePayloadAndMetadata) {
 
     const std::vector<uint8_t> payload{1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U};
     ASSERT_EQ(buffer->size_per_frame, payload.size());
+
+    // WHEN: A valid payload and metadata are written to frame index 0
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
     std::copy(payload.begin(), payload.end(), frame->data);
     frame->checksum = crc32(0, payload.data(), static_cast<unsigned int>(payload.size()));
@@ -265,6 +289,7 @@ TEST(ShareDictTest, ReaderReadAbsoluteReturnsFramePayloadAndMetadata) {
     core::DataEntry entry{};
     shared_dict_reader.read_absolute(entry, 0);
 
+    // THEN: The reader returns the frame payload and metadata
     EXPECT_EQ(entry.key, "accelerometer");
     EXPECT_EQ(entry.data, payload);
     EXPECT_EQ(entry.head, 0U);
@@ -273,6 +298,7 @@ TEST(ShareDictTest, ReaderReadAbsoluteReturnsFramePayloadAndMetadata) {
 }
 
 TEST(ShareDictTest, ReaderSkipsFramesWithChecksumMismatch) {
+    // GIVEN: A shared-memory reader and client are ready for an accelerometer buffer
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
     core::SharedDictClient shared_dict_client("accelerometer");
     core::SharedDictReader shared_dict_reader("accelerometer");
@@ -287,6 +313,8 @@ TEST(ShareDictTest, ReaderSkipsFramesWithChecksumMismatch) {
     core::Buffer* const buffer = shared_dict_client.get_buffer();
     ASSERT_NE(buffer, nullptr);
     ASSERT_EQ(buffer->size_per_frame, payload.size());
+
+    // WHEN: A frame is populated with a checksum that does not match its payload
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
     std::copy(payload.begin(), payload.end(), frame->data);
     frame->checksum = 0U;
@@ -296,6 +324,7 @@ TEST(ShareDictTest, ReaderSkipsFramesWithChecksumMismatch) {
     core::DataEntry entry{};
     shared_dict_reader.read_absolute(entry, 0);
 
+    // THEN: The reader skips the invalid frame
     EXPECT_TRUE(entry.key.empty());
     EXPECT_TRUE(entry.data.empty());
     EXPECT_EQ(entry.sequence, 0U);
@@ -303,6 +332,7 @@ TEST(ShareDictTest, ReaderSkipsFramesWithChecksumMismatch) {
 }
 
 TEST(ShareDictTest, WriterPublishesPayloadToSharedMemory) {
+    // GIVEN: A shared-memory writer and reader are ready for an accelerometer buffer
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
     const core::SharedDictClient shared_dict_client("accelerometer");
     core::SharedDictReader shared_dict_reader("accelerometer");
@@ -317,8 +347,10 @@ TEST(ShareDictTest, WriterPublishesPayloadToSharedMemory) {
     const std::vector<uint8_t> payload{1U, 3U, 5U, 7U, 9U, 11U, 13U, 15U, 17U, 19U, 21U, 23U};
     ASSERT_EQ(buffer->size_per_frame, payload.size());
 
+    // WHEN: The writer publishes a payload
     shared_dict_writer.add("accelerometer", payload.data(), payload.size(), 41U, 424242U);
 
+    // THEN: The ringbuffer metadata advances to the published sequence
     ASSERT_TRUE(wait_for_predicate([buffer] {
         return buffer->sequence.load(std::memory_order_acquire) == 41U;
     }));
@@ -327,6 +359,7 @@ TEST(ShareDictTest, WriterPublishesPayloadToSharedMemory) {
     core::DataEntry entry{};
     shared_dict_reader.read_latest(entry);
 
+    // THEN: The reader returns the published payload and metadata
     EXPECT_EQ(entry.key, "accelerometer");
     EXPECT_EQ(entry.data, payload);
     EXPECT_EQ(entry.head, 0U);
@@ -335,6 +368,7 @@ TEST(ShareDictTest, WriterPublishesPayloadToSharedMemory) {
 }
 
 TEST(ShareDictTest, WriterRejectsOversizedPayloadWithoutAdvancingRingbuffer) {
+    // GIVEN: A shared-memory writer is ready and the ringbuffer state is captured
     const core::SharedDictMaster shared_dict_master(TEST_CONFIG_PATH);
     const core::SharedDictClient shared_dict_client("accelerometer");
     core::SharedDictWriter shared_dict_writer("accelerometer", test_writer_config());
@@ -348,10 +382,13 @@ TEST(ShareDictTest, WriterRejectsOversizedPayloadWithoutAdvancingRingbuffer) {
     const uint32_t initial_sequence = buffer->sequence.load(std::memory_order_acquire);
 
     std::vector<uint8_t> payload(buffer->size_per_frame + 1U, 0xABU);
+
+    // WHEN: The writer receives a payload larger than the frame size
     shared_dict_writer.add("accelerometer", payload.data(), payload.size(), 99U, 123U);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
+    // THEN: The ringbuffer head and sequence do not advance
     EXPECT_EQ(buffer->head.load(std::memory_order_acquire), initial_head);
     EXPECT_EQ(buffer->sequence.load(std::memory_order_acquire), initial_sequence);
 }

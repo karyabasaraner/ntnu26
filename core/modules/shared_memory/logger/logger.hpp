@@ -19,8 +19,6 @@
 
 namespace core {
 
-class SharedDictLoggerTestPeer;
-
 enum StreamType : uint8_t {
     CAMERA,
     IMU,
@@ -40,6 +38,24 @@ struct SensorStream {
 
 };
 
+class SharedDictStreamProcessor {
+public:
+    SharedDictStreamProcessor(mcap::McapWriter& writer, std::mutex& writer_mutex, int jpeg_quality);
+
+    void process(SensorStream& stream);
+
+private:
+    mcap::McapWriter* _writer{nullptr};
+    std::mutex* _writer_mutex{nullptr};
+    int _jpeg_quality{90};
+
+    void _get_camera_payload(DataEntry& entry, const SensorStream& stream, std::vector<std::byte>& payload);
+    void _get_imu_payload(const DataEntry& entry, std::vector<std::byte>& payload);
+
+    template <typename T>
+    void _append_value(std::vector<std::byte>& out, const T& value);
+};
+
 class SharedDictLogger {
 public:
     SharedDictLogger(const std::string& config_path, std::string output_path);
@@ -54,8 +70,6 @@ public:
     void request_stop();
 
 private:
-    friend class SharedDictLoggerTestPeer;
-
     Config _config;
     int _jpeg_quality{90};
     mcap::McapWriter _writer;
@@ -64,16 +78,11 @@ private:
     std::string _output_path;
     std::unordered_map<std::string, uint32_t> _buffer_sizes;
     std::vector<SensorStream> _sensor_streams;
+    SharedDictStreamProcessor _stream_processor;
 
-    void _process_sensor_stream(SensorStream& stream);
     void _initialize_streams();
     void _open_writer();
     void _register_channels();
-    void _get_camera_payload(DataEntry& entry, const SensorStream& stream, std::vector<std::byte>& payload);
-    void _get_imu_payload(const DataEntry& entry, std::vector<std::byte>& payload);
-
-    template <typename T>
-    void _append_value(std::vector<std::byte>& out, const T& value);
 };
 
 } // namespace core

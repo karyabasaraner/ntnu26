@@ -27,6 +27,17 @@ RUN echo 'if [ -f "$HOME/.bash-git-prompt/gitprompt.sh" ]; then GIT_PROMPT_ONLY_
 # Install codex
 RUN npm i -g @openai/codex
 
+# Configure codex workspace permissions
+RUN mkdir -p /home/${USERNAME}/.codex && \
+    printf '%s\n' \
+    'approvals_reviewer = "user"' \
+    '[projects."/workspaces/core"]' \
+    'trust_level = "trusted"' \
+    'sandbox_mode = "workspace-write"' \
+    'approval_policies = "on-request"' \
+    > /home/${USERNAME}/.codex/config.toml && \
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.codex
+
 # Clean up
 RUN rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* /var/cache/apt/archives/*
 

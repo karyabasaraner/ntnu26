@@ -3,11 +3,12 @@
 #include "../../tests/test_config_helpers.hpp"
 #include "../configs.hpp"
 
-#include <stdexcept>
+#include <exception>
 
 namespace {
 
 TEST(CoreConfigsTest, LoadParsesNestedCameraImuAndSharedMemoryConfig) {
+    // GIVEN: A config file with camera, IMU, and shared-memory sections
     const core::test::TempConfigFile config_file(R"(
 cameras:
   - name: front
@@ -49,10 +50,12 @@ shared_memory:
     num_frames: 4000
 )");
 
+    // WHEN: The config file is loaded
     core::Config config;
     config.load(config_file.path());
     const core::RootConfig& root_config = config.get_config();
 
+    // THEN: Camera fields are parsed from the nested config
     ASSERT_EQ(root_config.cameras.size(), 1);
     EXPECT_EQ(root_config.cameras[0].name, "front");
     EXPECT_EQ(root_config.cameras[0].subsample_factor, 2U);
@@ -61,17 +64,20 @@ shared_memory:
     ASSERT_EQ(root_config.cameras[0].writer.transforms.size(), 1);
     EXPECT_EQ(root_config.cameras[0].writer.transforms[0].name, "UYVY2RGB");
 
+    // THEN: IMU fields are parsed from the nested config
     ASSERT_EQ(root_config.imus.size(), 1);
     EXPECT_EQ(root_config.imus[0].name, "accelerometer");
     EXPECT_FLOAT_EQ(root_config.imus[0].sampling_frequency, 400.0F);
     EXPECT_EQ(root_config.imus[0].channels.size(), 3);
 
+    // THEN: Shared-memory fields are parsed from the nested config
     ASSERT_EQ(root_config.shared_memory.size(), 2);
     EXPECT_EQ(root_config.shared_memory[1].name, "accelerometer");
     EXPECT_EQ(root_config.shared_memory[1].size_per_frame, 12U);
 }
 
 TEST(CoreConfigsTest, LoadAppliesDocumentedDefaultsForOptionalFields) {
+    // GIVEN: A config file omits optional camera fields
     const core::test::TempConfigFile config_file(R"(
 cameras:
   - name: right
@@ -91,16 +97,19 @@ shared_memory:
     num_frames: 32
 )");
 
+    // WHEN: The config file is loaded
     core::Config config;
     config.load(config_file.path());
     const core::RootConfig& root_config = config.get_config();
 
+    // THEN: Optional fields use documented defaults
     ASSERT_EQ(root_config.cameras.size(), 1);
     EXPECT_EQ(root_config.cameras[0].subsample_factor, 1U);
     EXPECT_TRUE(root_config.cameras[0].writer.transforms.empty());
 }
 
 TEST(CoreConfigsTest, LoadThrowsWhenRequiredFieldsAreMissing) {
+    // GIVEN: A config file is missing required camera fields
     const core::test::TempConfigFile config_file(R"(
 cameras:
   - name: broken
@@ -116,7 +125,10 @@ imus: []
 shared_memory: []
 )");
 
+    // WHEN: The config file is loaded
     core::Config config;
+
+    // THEN: Loading fails with an exception
     EXPECT_THROW(config.load(config_file.path()), std::exception);
 }
 

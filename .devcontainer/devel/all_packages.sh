@@ -6,6 +6,7 @@ export DEBIAN_FRONTEND=noninteractive
 main() {
     local pkgs=(
         bison
+        bubblewrap
         ccache
         clang-format
         clang-tidy-18

@@ -2,22 +2,32 @@
 
 #include "../../../tests/test_async_helpers.hpp"
 #include "../client/client.hpp"
+#include "../client/reader.hpp"
 #include "../client/writer.hpp"
 #include "../logger/logger.hpp"
+#include "../logger/schema.hpp"
 #include "../master.hpp"
+#include "../ringbuffer.hpp"
+#include "configs.hpp"
 
-#include <algorithm>
 #include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <mcap/reader.hpp>
+#include <mcap/types.hpp>
+#include <mcap/writer.hpp>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <system_error>
 #include <vector>
 
 namespace {
 
-constexpr char kTestConfigPath[] = "ci/configs/ci-four-cameras.yaml";
+const std::string kTestConfigPath = "ci/configs/ci-four-cameras.yaml";
 
 class TempMcapPath {
 public:
@@ -47,6 +57,7 @@ private:
 template <typename T>
 T read_value(const std::byte* data, std::size_t offset) {
     T value{};
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
     std::memcpy(&value, data + offset, sizeof(T));
     return value;
 }
@@ -60,7 +71,9 @@ struct DecodedImuMessage {
     float z{0.0F};
 };
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 std::vector<DecodedImuMessage> read_imu_messages(const std::string& mcap_path) {
+    // NOLINTNEXTLINE(misc-const-correctness)
     mcap::McapReader reader;
     const auto open_status = reader.open(mcap_path);
     EXPECT_TRUE(open_status.ok()) << open_status.message;
@@ -74,9 +87,10 @@ std::vector<DecodedImuMessage> read_imu_messages(const std::string& mcap_path) {
         return {};
     }
 
+    // NOLINTNEXTLINE(misc-const-correctness)
     std::vector<DecodedImuMessage> messages;
     for (const auto& view : reader.readMessages()) {
-        if (view.channel == nullptr || view.channel->topic.rfind("/imu/", 0) != 0) {
+        if (view.channel == nullptr || !view.channel->topic.starts_with("/imu/")) {
             continue;
         }
 
@@ -107,44 +121,52 @@ std::vector<DecodedImuMessage> read_imu_messages(const std::string& mcap_path) {
     return messages;
 }
 
+void open_writer(mcap::McapWriter& writer, const std::string& path) {
+    mcap::McapWriterOptions options("core");
+    options.compression = mcap::Compression::Zstd;
+    const auto status = writer.open(path, options);
+    ASSERT_TRUE(status.ok()) << status.message;
+}
+
+core::SensorStream make_accelerometer_stream(mcap::McapWriter& writer) {
+    mcap::Schema imu_schema("core/ImuXYZ", "schema", core::ImuSchema.data());
+    writer.addSchema(imu_schema);
+
+    mcap::Channel imu_channel("/imu/accelerometer", "binary", imu_schema.id);
+    writer.addChannel(imu_channel);
+
+    core::SensorStream stream;
+    stream.channel_id = imu_channel.id;
+    stream.name = "accelerometer";
+    stream.reader = std::make_unique<core::SharedDictReader>("accelerometer");
+    stream.type = core::StreamType::IMU;
+    stream.num_frames = 4000U;
+    return stream;
+}
+
 } // namespace
 
-namespace core {
-
-class SharedDictLoggerTestPeer {
-public:
-    static std::vector<SensorStream>& sensor_streams(SharedDictLogger& logger) {
-        return logger._sensor_streams;
-    }
-
-    static void process_sensor_stream(SharedDictLogger& logger, SensorStream& stream) {
-        logger._process_sensor_stream(stream);
-    }
-};
-
-} // namespace core
-
 TEST(LoggerTest, ProcessSensorStreamWritesImuSampleToMcap) {
-    TempMcapPath output_path;
+    // GIVEN: Shared memory, an accelerometer writer, and an MCAP stream processor are ready
+    TempMcapPath const output_path;
     const core::SharedDictMaster shared_dict_master(kTestConfigPath);
-    core::WriterConfig writer_config;
+    core::WriterConfig const writer_config;
     core::SharedDictWriter shared_dict_writer("accelerometer", writer_config);
     const core::SharedDictClient shared_dict_client("accelerometer");
-
     ASSERT_TRUE(shared_dict_client.is_ready());
 
     {
-        core::SharedDictLogger logger(kTestConfigPath, output_path.string());
+        mcap::McapWriter writer;
+        open_writer(writer, output_path.string());
+        std::mutex writer_mutex;
+        core::SharedDictStreamProcessor stream_processor(writer, writer_mutex, 90);
+        auto stream = make_accelerometer_stream(writer);
 
-        auto& streams = core::SharedDictLoggerTestPeer::sensor_streams(logger);
-        auto stream_it = std::find_if(streams.begin(), streams.end(), [](const core::SensorStream& stream) {
-            return stream.name == "accelerometer";
-        });
-        ASSERT_NE(stream_it, streams.end());
-        ASSERT_NE(stream_it->reader, nullptr);
-        ASSERT_TRUE(stream_it->reader->is_ready());
-        EXPECT_NE(stream_it->channel_id, 0U);
+        ASSERT_NE(stream.reader, nullptr);
+        ASSERT_TRUE(stream.reader->is_ready());
+        EXPECT_NE(stream.channel_id, 0U);
 
+        // WHEN: An IMU sample is published and the stream processor handles the stream
         const std::array<float, 3> imu_sample{1.25F, -2.5F, 3.75F};
         shared_dict_writer.add(
             "accelerometer",
@@ -159,9 +181,13 @@ TEST(LoggerTest, ProcessSensorStreamWritesImuSampleToMcap) {
             return buffer->sequence.load(std::memory_order_acquire) == 41U;
         }));
 
-        core::SharedDictLoggerTestPeer::process_sensor_stream(logger, *stream_it);
+        stream_processor.process(stream);
+
+        std::lock_guard<std::mutex> const lock(writer_mutex);
+        writer.close();
     }
 
+    // THEN: The processor writes one IMU message with the sample payload and metadata
     const auto messages = read_imu_messages(output_path.string());
     ASSERT_EQ(messages.size(), 1U);
     EXPECT_EQ(messages[0].topic, "/imu/accelerometer");
@@ -173,22 +199,27 @@ TEST(LoggerTest, ProcessSensorStreamWritesImuSampleToMcap) {
 }
 
 TEST(LoggerTest, ProcessSensorStreamWithUnavailableSharedMemoryWritesNoMessages) {
-    TempMcapPath output_path;
+    // GIVEN: An MCAP stream processor exists without a shared-memory master
+    TempMcapPath const output_path;
 
     {
-        core::SharedDictLogger logger(kTestConfigPath, output_path.string());
+        mcap::McapWriter writer;
+        open_writer(writer, output_path.string());
+        std::mutex writer_mutex;
+        core::SharedDictStreamProcessor stream_processor(writer, writer_mutex, 90);
+        auto stream = make_accelerometer_stream(writer);
 
-        auto& streams = core::SharedDictLoggerTestPeer::sensor_streams(logger);
-        auto stream_it = std::find_if(streams.begin(), streams.end(), [](const core::SensorStream& stream) {
-            return stream.name == "accelerometer";
-        });
-        ASSERT_NE(stream_it, streams.end());
-        ASSERT_NE(stream_it->reader, nullptr);
-        EXPECT_FALSE(stream_it->reader->is_ready());
+        ASSERT_NE(stream.reader, nullptr);
+        EXPECT_FALSE(stream.reader->is_ready());
 
-        core::SharedDictLoggerTestPeer::process_sensor_stream(logger, *stream_it);
+        // WHEN: The unavailable stream is processed
+        stream_processor.process(stream);
+
+        std::lock_guard<std::mutex> const lock(writer_mutex);
+        writer.close();
     }
 
+    // THEN: No IMU messages are written
     const auto messages = read_imu_messages(output_path.string());
     EXPECT_TRUE(messages.empty());
 }

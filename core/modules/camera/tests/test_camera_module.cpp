@@ -11,6 +11,8 @@
 const std::string TEST_CONFIG_PATH = "ci/configs/ci-four-cameras.yaml";
 
 TEST(CameraModuleTest, InitializeCameras) {
+    // GIVEN: A config declares 4 cameras
+
     // WHEN: Camera module is initialized with config with 4 cameras
     const core::CameraModule camera_module(TEST_CONFIG_PATH);
 
@@ -36,12 +38,19 @@ TEST(CameraModuleTest, StartStopCameras) {
 }
 
 TEST(CameraModuleTest, StartStopCameraByIndexZero) {
+    // GIVEN: Camera module is initialized with config with 4 cameras
     core::CameraModule camera_module(TEST_CONFIG_PATH);
 
+    // WHEN: Camera at index 0 is started
     camera_module.start_cameras(0);
+
+    // THEN: Exactly one camera is running
     EXPECT_EQ(camera_module.get_running_cameras(), 1);
 
+    // WHEN: Camera at index 0 is stopped
     camera_module.stop_cameras(0);
+
+    // THEN: No cameras are running
     EXPECT_EQ(camera_module.get_running_cameras(), 0);
 }
 
@@ -64,6 +73,8 @@ TEST(CameraModuleTest, StartWithWritingAndReading) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     core::DataEntry entry;
     shared_dict_reader.read_latest(entry);
+
+    // THEN: The reader receives frame metadata from shared memory
     EXPECT_GT(entry.timestamp_ns, 0);
     EXPECT_GE(entry.sequence, 0);
 }

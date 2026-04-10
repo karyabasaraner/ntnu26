@@ -6,6 +6,8 @@
 const std::string TEST_CONFIG_PATH = "ci/configs/ci-four-cameras.yaml";
 
 TEST(IMUModuleTest, InitializeIMUs) {
+    // GIVEN: A config declares 2 IMUs
+
     // WHEN: IMU module is initialized with config with 2 IMUs
     const core::IMUModule imu_module(TEST_CONFIG_PATH);
 
