@@ -57,6 +57,8 @@ core::SharedDictReader* make_reader_raw(nb::str& config_path, nb::str& name) {
 
 template <typename T>
 nb::ndarray<nb::numpy, T> vector_to_numpy(const std::vector<T>& values) {
+    // This intentionally copies into Python-owned storage so arrays remain valid
+    // after the getter returns a temporary dict.
     auto vec_holder = std::make_shared<std::vector<T>>(values);
     T* ptr = vec_holder->data();
     const size_t vec_holder_size = vec_holder->size();
@@ -192,14 +194,14 @@ NB_MODULE(core, module) {
                 return nb::none();
             }
             return imu_series_to_dict(*series);
-        }, "topic"_a, "Return an IMU topic as arrays, or None when unavailable")
+        }, "topic"_a, "Return an IMU topic as copied NumPy arrays, or None when unavailable")
         .def("get_camera_data", [](const core::LogFile& self, const std::string& topic) -> nb::object {
             const auto* series = self.get_camera_data(topic);
             if (series == nullptr) {
                 return nb::none();
             }
             return camera_series_to_dict(*series);
-        }, "topic"_a, "Return a compressed camera topic as arrays and JPEG bytes, or None when unavailable");
+        }, "topic"_a, "Return a compressed camera topic as copied arrays and JPEG bytes, or None when unavailable");
 
     module.def("read_log_file", [](const std::string& path) {
         nb::gil_scoped_release const rel;

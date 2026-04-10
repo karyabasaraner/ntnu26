@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -62,8 +63,8 @@ public:
     void process(SensorStream& stream);
 
 private:
-    mcap::McapWriter* _writer{nullptr};
-    std::mutex* _writer_mutex{nullptr};
+    std::reference_wrapper<mcap::McapWriter> _writer;
+    std::reference_wrapper<std::mutex> _writer_mutex;
     int _jpeg_quality{90};
     SteadyClockUnixTimeMapper _timestamp_mapper;
 

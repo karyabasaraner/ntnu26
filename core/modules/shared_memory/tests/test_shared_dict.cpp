@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <cstring>
 #include <fcntl.h>
-#include <functional>
 #include <stdexcept>
 #include <string>
 #include <sys/mman.h>
@@ -17,6 +16,7 @@
 #include <vector>
 #include <zlib.h>
 
+#include "../../../tests/test_async_helpers.hpp"
 #include "../../../utils/configs.hpp"
 #include "../client/client.hpp"
 #include "../client/reader.hpp"
@@ -84,18 +84,6 @@ private:
     void* _map{nullptr};
     std::size_t _size{0};
 };
-
-bool wait_for_predicate(const std::function<bool()>& predicate,
-                        std::chrono::milliseconds timeout = std::chrono::milliseconds(250)) {
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (predicate()) {
-            return true;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-    return predicate();
-}
 
 core::WriterConfig test_writer_config() {
     core::WriterConfig config;
@@ -351,7 +339,7 @@ TEST(ShareDictTest, WriterPublishesPayloadToSharedMemory) {
     shared_dict_writer.add("accelerometer", payload.data(), payload.size(), 41U, 424242U);
 
     // THEN: The ringbuffer metadata advances to the published sequence
-    ASSERT_TRUE(wait_for_predicate([buffer] {
+    ASSERT_TRUE(core::test::wait_for_predicate([buffer] {
         return buffer->sequence.load(std::memory_order_acquire) == 41U;
     }));
     EXPECT_EQ(buffer->head.load(std::memory_order_acquire), 1U);

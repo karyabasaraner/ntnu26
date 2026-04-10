@@ -24,6 +24,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -585,13 +586,19 @@ LogFile read_log_file(const std::string& path) {
     // NOLINTNEXTLINE(misc-const-correctness): the log is populated incrementally while parsing MCAP messages.
     LogFile log_file;
     log_file._metadata.path = path;
-    log_file._metadata.file_size_bytes = std::filesystem::file_size(path);
 
     // NOLINTNEXTLINE(misc-const-correctness): MCAP reader methods mutate parser state while opening and reading.
     mcap::McapReader reader;
     const auto open_status = reader.open(path);
     if (!open_status.ok()) {
         throw std::runtime_error("Failed to open MCAP log '" + path + "': " + std::string(open_status.message));
+    }
+
+    // NOLINTNEXTLINE(misc-const-correctness): populated by std::filesystem::file_size.
+    std::error_code file_size_error;
+    log_file._metadata.file_size_bytes = std::filesystem::file_size(path, file_size_error);
+    if (file_size_error) {
+        throw std::runtime_error("Failed to determine MCAP log size for '" + path + "': " + file_size_error.message());
     }
 
     const auto summary_status = reader.readSummary(mcap::ReadSummaryMethod::AllowFallbackScan);

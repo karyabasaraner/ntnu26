@@ -294,8 +294,8 @@ SharedDictStreamProcessor::SharedDictStreamProcessor(
     int jpeg_quality,
     SteadyClockUnixTimeMapper timestamp_mapper
 ) :
-    _writer(&writer),
-    _writer_mutex(&writer_mutex),
+    _writer(writer),
+    _writer_mutex(writer_mutex),
     _jpeg_quality(jpeg_quality),
     _timestamp_mapper(timestamp_mapper) {}
 
@@ -415,8 +415,8 @@ void SharedDictStreamProcessor::process(SensorStream& stream) {
     msg.data = payload.data();
     msg.dataSize = payload.size();
 
-    std::lock_guard<std::mutex> const lock(*_writer_mutex);
-    const auto status = _writer->write(msg);
+    std::lock_guard<std::mutex> const lock(_writer_mutex.get());
+    const auto status = _writer.get().write(msg);
     if (!status.ok()) {
         spdlog::error("Failed to write camera sample for {}: {}", stream.name, status.message);
         return;
