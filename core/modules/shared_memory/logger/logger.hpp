@@ -7,11 +7,11 @@
 #include "../utils.hpp"
 #include "configs.hpp"
 #include "mcap/types.hpp"
+#include "steady_clock_unix_time_mapper.hpp"
 
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -36,40 +36,6 @@ struct SensorStream {
     uint32_t current_head{0};
     uint32_t current_sequence{0};
     uint32_t num_frames{1};
-
-};
-
-class SharedDictStreamProcessor {
-public:
-    class SteadyClockUnixTimeMapper {
-    public:
-        explicit SteadyClockUnixTimeMapper(int64_t steady_to_unix_offset_ns);
-
-        [[nodiscard]] static SteadyClockUnixTimeMapper from_current_clocks();
-        [[nodiscard]] uint64_t to_unix_time_ns(uint64_t steady_timestamp_ns) const;
-        [[nodiscard]] int64_t steady_to_unix_offset_ns() const;
-
-    private:
-        int64_t _steady_to_unix_offset_ns{0};
-    };
-
-    SharedDictStreamProcessor(
-        mcap::McapWriter& writer,
-        std::mutex& writer_mutex,
-        int jpeg_quality,
-        SteadyClockUnixTimeMapper timestamp_mapper = SteadyClockUnixTimeMapper::from_current_clocks()
-    );
-
-    void process(SensorStream& stream);
-
-private:
-    std::reference_wrapper<mcap::McapWriter> _writer;
-    std::reference_wrapper<std::mutex> _writer_mutex;
-    int _jpeg_quality{90};
-    SteadyClockUnixTimeMapper _timestamp_mapper;
-
-    void _get_camera_payload(DataEntry& entry, const SensorStream& stream, uint64_t timestamp_ns, std::vector<std::byte>& payload);
-    static void _get_imu_payload(const DataEntry& entry, uint64_t timestamp_ns, std::vector<std::byte>& payload);
 };
 
 class SharedDictLogger {
@@ -94,12 +60,14 @@ private:
     std::string _output_path;
     std::unordered_map<std::string, uint32_t> _buffer_sizes;
     std::vector<SensorStream> _sensor_streams;
-    SharedDictStreamProcessor::SteadyClockUnixTimeMapper _timestamp_mapper;
-    SharedDictStreamProcessor _stream_processor;
+    SteadyClockUnixTimeMapper _timestamp_mapper;
 
     void _initialize_streams();
     void _open_writer();
     void _register_channels();
+    void _process_stream(SensorStream& stream);
+    bool _get_camera_payload(DataEntry& entry, const SensorStream& stream, uint64_t timestamp_ns, std::vector<std::byte>& payload);
+    static bool _get_imu_payload(const DataEntry& entry, uint64_t timestamp_ns, std::vector<std::byte>& payload);
 };
 
 } // namespace core

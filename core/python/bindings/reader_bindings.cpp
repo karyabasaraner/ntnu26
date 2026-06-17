@@ -207,9 +207,4 @@ NB_MODULE(core, module) {
         nb::gil_scoped_release const rel;
         return core::read_log_file(path);
     }, "path"_a, "Read a core MCAP log file into memory");
-
-    module.def("convert_legacy_log_file_to_foxglove", [](const std::string& input_path, const std::string& output_path) {
-        nb::gil_scoped_release const rel;
-        core::convert_legacy_log_file_to_foxglove(input_path, output_path);
-    }, "input_path"_a, "output_path"_a, "Convert a legacy binary core MCAP log to the Foxglove-compatible JSON format");
 }

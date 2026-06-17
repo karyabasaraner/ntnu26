@@ -1,17 +1,12 @@
 #include "log_reader.hpp"
+#include "mcap/types.hpp"
 #include "schema.hpp"
-#include <opencv2/core/hal/interface.h>
 
+#include <array>
 #include <exception>
 #include <mcap/reader.hpp>
-#include <mcap/types.hpp>
-#include <mcap/writer.hpp>
-#include <opencv2/core/mat.hpp>
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/imgproc.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
@@ -37,10 +32,6 @@ constexpr uint64_t kNanosecondsPerSecondUint = 1'000'000'000ULL;
 constexpr uint8_t kBase64DecodeInvalid = 255U;
 constexpr uint8_t kBase64DecodePadding = 254U;
 constexpr std::string_view kBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-constexpr auto kLegacyImuSchemaName = "core/ImuXYZ";
-constexpr auto kLegacyCompressedImageSchemaName = "core/CompressedImage";
-constexpr auto kLegacySchemaEncoding = "schema";
-constexpr auto kLegacyMessageEncoding = "binary";
 
 void update_topic_metadata(
     TopicMetadata& metadata,
@@ -183,139 +174,6 @@ std::string message_data_to_string(const mcap::Message& message, const std::stri
         payload.push_back(static_cast<char>(std::to_integer<unsigned char>(byte)));
     }
     return payload;
-}
-
-template <typename T>
-T read_legacy_value(const mcap::Message& message, std::size_t offset, const std::string& topic) {
-    if (message.data == nullptr || offset > message.dataSize || sizeof(T) > message.dataSize - offset) {
-        throw std::runtime_error("Malformed legacy MCAP payload for topic '" + topic + "'");
-    }
-
-    T value{};
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    std::memcpy(&value, message.data + offset, sizeof(T));
-    return value;
-}
-
-std::vector<std::byte> read_legacy_bytes(const mcap::Message& message, std::size_t offset, std::size_t size, const std::string& topic) {
-    if (message.data == nullptr || offset > message.dataSize || size > message.dataSize - offset) {
-        throw std::runtime_error("Malformed legacy MCAP payload for topic '" + topic + "'");
-    }
-
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    const auto* begin = message.data + offset;
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    return {begin, begin + size};
-}
-
-std::vector<std::byte> try_fix_legacy_jpeg_channel_order(const std::vector<std::byte>& jpeg_data, uint8_t jpeg_quality) {
-    std::vector<uint8_t> encoded;
-    encoded.reserve(jpeg_data.size());
-    std::transform(jpeg_data.begin(), jpeg_data.end(), std::back_inserter(encoded), [](std::byte byte) {
-        return std::to_integer<uint8_t>(byte);
-    });
-
-    const cv::Mat encoded_mat(1, static_cast<int>(encoded.size()), CV_8UC1, encoded.data());
-    const cv::Mat decoded_bgr = cv::imdecode(encoded_mat, cv::IMREAD_COLOR);
-    if (decoded_bgr.empty()) {
-        return jpeg_data;
-    }
-
-    cv::Mat corrected_bgr;
-    cv::cvtColor(decoded_bgr, corrected_bgr, cv::COLOR_BGR2RGB);
-    std::vector<uint8_t> corrected_encoded;
-    const std::vector<int> params{cv::IMWRITE_JPEG_QUALITY, static_cast<int>(jpeg_quality)};
-    if (!cv::imencode(".jpg", corrected_bgr, corrected_encoded, params)) {
-        return jpeg_data;
-    }
-
-    std::vector<std::byte> corrected;
-    corrected.reserve(corrected_encoded.size());
-    std::transform(corrected_encoded.begin(), corrected_encoded.end(), std::back_inserter(corrected), [](uint8_t value) {
-        return static_cast<std::byte>(value);
-    });
-    return corrected;
-}
-
-std::string frame_id_from_camera_topic(const std::string& topic) {
-    constexpr std::string_view camera_prefix = "/camera/";
-    constexpr std::string_view camera_suffix = "/image/compressed";
-    if (topic.starts_with(camera_prefix) && topic.ends_with(camera_suffix) && topic.size() > camera_prefix.size() + camera_suffix.size()) {
-        return topic.substr(camera_prefix.size(), topic.size() - camera_prefix.size() - camera_suffix.size());
-    }
-    return topic;
-}
-
-std::vector<std::byte> make_foxglove_imu_payload(const mcap::Message& message, const std::string& topic) {
-    constexpr std::size_t timestamp_offset = 0;
-    constexpr std::size_t sequence_offset = timestamp_offset + sizeof(uint64_t);
-    constexpr std::size_t x_offset = sequence_offset + sizeof(uint32_t);
-    constexpr std::size_t y_offset = x_offset + sizeof(float);
-    constexpr std::size_t z_offset = y_offset + sizeof(float);
-    constexpr std::size_t expected_size = z_offset + sizeof(float);
-
-    if (message.dataSize != expected_size) {
-        throw std::runtime_error("Malformed legacy IMU MCAP payload for topic '" + topic + "'");
-    }
-
-    std::ostringstream json;
-    json << '{';
-    append_timestamp_json(json, read_legacy_value<uint64_t>(message, timestamp_offset, topic));
-    json << R"(,"sequence":)" << read_legacy_value<uint32_t>(message, sequence_offset, topic)
-         << R"(,"x":)" << read_legacy_value<float>(message, x_offset, topic)
-         << R"(,"y":)" << read_legacy_value<float>(message, y_offset, topic)
-         << R"(,"z":)" << read_legacy_value<float>(message, z_offset, topic)
-         << '}';
-
-    std::vector<std::byte> payload;
-    assign_payload(payload, json.str());
-    return payload;
-}
-
-std::vector<std::byte> make_foxglove_compressed_image_payload(const mcap::Message& message, const std::string& topic) {
-    constexpr std::size_t timestamp_offset = 0;
-    constexpr std::size_t sequence_offset = timestamp_offset + sizeof(uint64_t);
-    constexpr std::size_t width_offset = sequence_offset + sizeof(uint32_t);
-    constexpr std::size_t height_offset = width_offset + sizeof(uint32_t);
-    constexpr std::size_t channels_offset = height_offset + sizeof(uint32_t);
-    constexpr std::size_t jpeg_quality_offset = channels_offset + sizeof(uint8_t);
-    constexpr std::size_t jpeg_size_offset = jpeg_quality_offset + sizeof(uint8_t);
-    constexpr std::size_t jpeg_data_offset = jpeg_size_offset + sizeof(uint32_t);
-    static_cast<void>(read_legacy_value<uint32_t>(message, width_offset, topic));
-    static_cast<void>(read_legacy_value<uint32_t>(message, height_offset, topic));
-    const auto channels = read_legacy_value<uint8_t>(message, channels_offset, topic);
-    const auto jpeg_quality = read_legacy_value<uint8_t>(message, jpeg_quality_offset, topic);
-    const auto jpeg_size = read_legacy_value<uint32_t>(message, jpeg_size_offset, topic);
-    auto jpeg_data = read_legacy_bytes(message, jpeg_data_offset, jpeg_size, topic);
-    if (channels == 3U) {
-        jpeg_data = try_fix_legacy_jpeg_channel_order(jpeg_data, jpeg_quality);
-    }
-
-    std::ostringstream json;
-    json << '{';
-    append_timestamp_json(json, read_legacy_value<uint64_t>(message, timestamp_offset, topic));
-    json << R"(,"frame_id":")" << json_escape(frame_id_from_camera_topic(topic))
-         << R"(","data":")" << base64_encode(jpeg_data)
-         << R"(","format":"jpeg"})";
-
-    std::vector<std::byte> payload;
-    assign_payload(payload, json.str());
-    return payload;
-}
-
-void write_converted_message(mcap::McapWriter& writer, mcap::ChannelId channel_id, const mcap::Message& source_message, const std::vector<std::byte>& payload) {
-    mcap::Message output_message;
-    output_message.channelId = channel_id;
-    output_message.sequence = source_message.sequence;
-    output_message.publishTime = source_message.publishTime;
-    output_message.logTime = source_message.logTime;
-    output_message.data = payload.data();
-    output_message.dataSize = payload.size();
-
-    const auto write_status = writer.write(output_message);
-    if (!write_status.ok()) {
-        throw std::runtime_error("Failed to write converted MCAP message: " + std::string(write_status.message));
-    }
 }
 
 std::size_t find_json_field(const std::string& json, const std::string& field, const std::string& topic) {
@@ -628,73 +486,6 @@ LogFile read_log_file(const std::string& path) {
 
     finalize_log_metadata(log_file._metadata);
     return log_file;
-}
-
-void convert_legacy_log_file_to_foxglove(const std::string& input_path, const std::string& output_path) {
-    // NOLINTNEXTLINE(misc-const-correctness): MCAP reader methods mutate parser state while opening and reading.
-    mcap::McapReader reader;
-    const auto open_status = reader.open(input_path);
-    if (!open_status.ok()) {
-        throw std::runtime_error("Failed to open legacy MCAP log '" + input_path + "': " + std::string(open_status.message));
-    }
-
-    const auto summary_status = reader.readSummary(mcap::ReadSummaryMethod::AllowFallbackScan);
-    if (!summary_status.ok()) {
-        throw std::runtime_error("Failed to read legacy MCAP summary for '" + input_path + "': " + std::string(summary_status.message));
-    }
-
-    // NOLINTNEXTLINE(misc-const-correctness): MCAP writer methods mutate writer state.
-    mcap::McapWriter writer;
-    // NOLINTNEXTLINE(misc-const-correctness): compression is assigned after construction.
-    mcap::McapWriterOptions options("core");
-    options.compression = mcap::Compression::Zstd;
-    const auto writer_status = writer.open(output_path, options);
-    if (!writer_status.ok()) {
-        throw std::runtime_error("Failed to open converted MCAP log '" + output_path + "': " + std::string(writer_status.message));
-    }
-
-    // NOLINTNEXTLINE(misc-const-correctness): MCAP writer assigns schema ids through this object.
-    mcap::Schema image_schema(CompressedImageSchemaName, JsonSchemaEncoding, CompressedImageSchema.data());
-    writer.addSchema(image_schema);
-    // NOLINTNEXTLINE(misc-const-correctness): MCAP writer assigns schema ids through this object.
-    mcap::Schema imu_schema(ImuSchemaName, JsonSchemaEncoding, ImuSchema.data());
-    writer.addSchema(imu_schema);
-
-    // NOLINTNEXTLINE(misc-const-correctness): clang-tidy does not see mutations through try_emplace in this loop.
-    std::unordered_map<mcap::ChannelId, mcap::ChannelId> converted_channels;
-    for (const auto& view : reader.readMessages()) {
-        if (view.channel == nullptr || view.schema == nullptr) {
-            continue;
-        }
-        if (view.channel->messageEncoding != kLegacyMessageEncoding || view.schema->encoding != kLegacySchemaEncoding) {
-            continue;
-        }
-
-        // NOLINTNEXTLINE(misc-const-correctness): assigned by the schema-specific converter branch below.
-        std::vector<std::byte> payload;
-        // NOLINTNEXTLINE(misc-const-correctness): assigned by the schema-specific converter branch below.
-        mcap::SchemaId schema_id = 0;
-        if (view.schema->name == kLegacyImuSchemaName) {
-            payload = make_foxglove_imu_payload(view.message, view.channel->topic);
-            schema_id = imu_schema.id;
-        } else if (view.schema->name == kLegacyCompressedImageSchemaName) {
-            payload = make_foxglove_compressed_image_payload(view.message, view.channel->topic);
-            schema_id = image_schema.id;
-        } else {
-            continue;
-        }
-
-        const auto [channel_iter, inserted] = converted_channels.try_emplace(view.channel->id, 0);
-        if (inserted) {
-            // NOLINTNEXTLINE(misc-const-correctness): MCAP writer assigns channel ids through this object.
-            mcap::Channel output_channel(view.channel->topic, JsonMessageEncoding, schema_id);
-            writer.addChannel(output_channel);
-            channel_iter->second = output_channel.id;
-        }
-        write_converted_message(writer, channel_iter->second, view.message, payload);
-    }
-
-    writer.close();
 }
 
 std::string format_log_metadata(const LogMetadata& metadata) {

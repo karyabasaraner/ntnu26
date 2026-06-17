@@ -55,7 +55,7 @@ void assign_payload(std::vector<std::byte>& payload, const std::string& json) {
 }
 
 template <typename T>
-void append_legacy_value(std::vector<std::byte>& payload, const T& value) {
+void append_value(std::vector<std::byte>& payload, const T& value) {
     const auto old_size = payload.size();
     payload.resize(old_size + sizeof(T));
     std::span<std::byte> const output(payload);
@@ -92,37 +92,6 @@ std::vector<std::byte> make_camera_payload(
          << R"(","format":"jpeg"})";
     std::vector<std::byte> payload;
     assign_payload(payload, json.str());
-    return payload;
-}
-
-std::vector<std::byte> make_legacy_imu_payload(uint64_t timestamp_ns, uint32_t sequence, const std::array<float, 3>& xyz) {
-    std::vector<std::byte> payload;
-    append_legacy_value(payload, timestamp_ns);
-    append_legacy_value(payload, sequence);
-    append_legacy_value(payload, xyz[0]);
-    append_legacy_value(payload, xyz[1]);
-    append_legacy_value(payload, xyz[2]);
-    return payload;
-}
-
-std::vector<std::byte> make_legacy_camera_payload(
-    uint64_t timestamp_ns,
-    uint32_t sequence,
-    uint32_t width,
-    uint32_t height,
-    uint8_t channels,
-    uint8_t jpeg_quality,
-    const std::vector<std::byte>& jpeg_data
-) {
-    std::vector<std::byte> payload;
-    append_legacy_value(payload, timestamp_ns);
-    append_legacy_value(payload, sequence);
-    append_legacy_value(payload, width);
-    append_legacy_value(payload, height);
-    append_legacy_value(payload, channels);
-    append_legacy_value(payload, jpeg_quality);
-    append_legacy_value(payload, static_cast<uint32_t>(jpeg_data.size()));
-    payload.insert(payload.end(), jpeg_data.begin(), jpeg_data.end());
     return payload;
 }
 
@@ -170,38 +139,6 @@ void write_test_log(const std::string& path) {
     write_message(writer, imu_channel.id, 10U, 1'000'000'000ULL, imu_payload_0);
     write_message(writer, image_channel.id, 3U, 1'500'000'000ULL, camera_payload);
     write_message(writer, imu_channel.id, 11U, 2'000'000'000ULL, imu_payload_1);
-    writer.close();
-}
-
-void write_legacy_test_log(const std::string& path) {
-    mcap::McapWriter writer;
-    mcap::McapWriterOptions options("core");
-    options.compression = mcap::Compression::Zstd;
-    const auto open_status = writer.open(path, options);
-    ASSERT_TRUE(open_status.ok()) << open_status.message;
-
-    mcap::Schema imu_schema("core/ImuXYZ", "schema", "legacy imu schema");
-    writer.addSchema(imu_schema);
-    mcap::Channel imu_channel("/imu/accelerometer", "binary", imu_schema.id);
-    writer.addChannel(imu_channel);
-
-    mcap::Schema image_schema("core/CompressedImage", "schema", "legacy image schema");
-    writer.addSchema(image_schema);
-    mcap::Channel image_channel("/camera/front/image/compressed", "binary", image_schema.id);
-    writer.addChannel(image_channel);
-
-    const auto imu_payload = make_legacy_imu_payload(1'000'000'000ULL, 10U, {1.0F, 2.0F, 3.0F});
-    const std::vector<std::byte> jpeg_data{
-        std::byte{0xFF},
-        std::byte{0xD8},
-        std::byte{0xFF},
-        std::byte{0xD9},
-    };
-    const auto camera_payload = make_legacy_camera_payload(1'500'000'000ULL, 3U, 640U, 480U, 3U, 90U, jpeg_data);
-
-    // GIVEN: A deterministic MCAP file contains the old private binary core schemas
-    write_message(writer, imu_channel.id, 10U, 1'000'000'000ULL, imu_payload);
-    write_message(writer, image_channel.id, 3U, 1'500'000'000ULL, camera_payload);
     writer.close();
 }
 
@@ -301,37 +238,4 @@ TEST(LogReaderTest, ReadLogFileLoadsTopicsDataAndMetadata) {
     EXPECT_GT(camera_metadata.payload_bytes, 0U);
     EXPECT_DOUBLE_EQ(camera_metadata.duration_s, 0.0);
     EXPECT_DOUBLE_EQ(camera_metadata.average_rate_hz, 0.0);
-}
-
-TEST(LogReaderTest, ConvertLegacyLogFileToFoxgloveWritesReadableJsonLog) {
-    // GIVEN: A small legacy binary core MCAP log file was written
-    TempMcapPath const legacy_path;
-    TempMcapPath const converted_path;
-    write_legacy_test_log(legacy_path.string());
-
-    // WHEN: The legacy log is converted to the Foxglove-compatible format
-    core::convert_legacy_log_file_to_foxglove(legacy_path.string(), converted_path.string());
-
-    // THEN: The converted log uses Foxglove-compatible channel metadata
-    const auto schema_check = check_foxglove_channel_metadata(converted_path.string());
-    EXPECT_TRUE(schema_check.saw_imu_channel);
-    EXPECT_TRUE(schema_check.saw_image_channel);
-
-    // THEN: The normal new-format reader can load the converted data
-    const auto log_file = core::read_log_file(converted_path.string());
-    const auto* imu = log_file.get_imu_data("/imu/accelerometer");
-    ASSERT_NE(imu, nullptr);
-    EXPECT_EQ(imu->timestamp_ns, (std::vector<uint64_t>{1'000'000'000ULL}));
-    EXPECT_EQ(imu->sequence, (std::vector<uint32_t>{10U}));
-    EXPECT_EQ(imu->x, (std::vector<float>{1.0F}));
-    EXPECT_EQ(imu->y, (std::vector<float>{2.0F}));
-    EXPECT_EQ(imu->z, (std::vector<float>{3.0F}));
-
-    const auto* camera = log_file.get_camera_data("/camera/front/image/compressed");
-    ASSERT_NE(camera, nullptr);
-    EXPECT_EQ(camera->timestamp_ns, (std::vector<uint64_t>{1'500'000'000ULL}));
-    EXPECT_EQ(camera->frame_id, (std::vector<std::string>{"front"}));
-    EXPECT_EQ(camera->format, (std::vector<std::string>{"jpeg"}));
-    ASSERT_EQ(camera->jpeg_data.size(), 1U);
-    EXPECT_EQ(camera->jpeg_data[0], (std::vector<std::byte>{std::byte{0xFF}, std::byte{0xD8}, std::byte{0xFF}, std::byte{0xD9}}));
 }

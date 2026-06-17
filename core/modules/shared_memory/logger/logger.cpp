@@ -4,6 +4,7 @@
 #include "mcap/types.hpp"
 #include "mcap/writer.hpp"
 #include "schema.hpp"
+#include "steady_clock_unix_time_mapper.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,7 +15,6 @@
 #include <cstring>
 #include <exception>
 #include <iterator>
-#include <limits>
 #include <memory>
 #include <mutex>
 #include <opencv2/core/hal/interface.h>
@@ -104,8 +104,7 @@ void assign_payload(std::vector<std::byte>& payload, const std::string& json) {
 
 SharedDictLogger::SharedDictLogger(const std::string& config_path, std::string output_path) :
     _output_path(std::move(output_path)),
-    _timestamp_mapper(SharedDictStreamProcessor::SteadyClockUnixTimeMapper::from_current_clocks()),
-    _stream_processor(_writer, _writer_mutex, _jpeg_quality, _timestamp_mapper) {
+    _timestamp_mapper(SteadyClockUnixTimeMapper::from_current_clocks()) {
     _config.load(config_path);
     _initialize_streams();
     _open_writer();
@@ -213,14 +212,11 @@ void SharedDictLogger::run() {
         workers.emplace_back([this, stream_ptr]() {
             try {
                 while (!_stop.load(std::memory_order_acquire)) {
+                    _process_stream(*stream_ptr);
                     if (stream_ptr->type == StreamType::CAMERA) {
-                        _stream_processor.process(*stream_ptr);
                         std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60Hz is enough here
-
                     } else if (stream_ptr->type == StreamType::IMU) {
-                        _stream_processor.process(*stream_ptr);
                         std::this_thread::sleep_for(std::chrono::milliseconds(1)); // ~1000Hz
-
                     } else {
                         spdlog::warn("Unknown stream type for {}: {}", stream_ptr->name, static_cast<int>(stream_ptr->type));
                         break;
@@ -250,60 +246,11 @@ void SharedDictLogger::run() {
     spdlog::info("Logger stopping");
 }
 
-SharedDictStreamProcessor::SteadyClockUnixTimeMapper::SteadyClockUnixTimeMapper(int64_t steady_to_unix_offset_ns) :
-    _steady_to_unix_offset_ns(steady_to_unix_offset_ns) {}
-
-SharedDictStreamProcessor::SteadyClockUnixTimeMapper SharedDictStreamProcessor::SteadyClockUnixTimeMapper::from_current_clocks() {
-    const auto steady_before = std::chrono::steady_clock::now();
-    const auto system_now = std::chrono::system_clock::now();
-    const auto steady_after = std::chrono::steady_clock::now();
-    const auto steady_midpoint = steady_before + ((steady_after - steady_before) / 2);
-
-    const auto steady_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(steady_midpoint.time_since_epoch()).count();
-    const auto system_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(system_now.time_since_epoch()).count();
-    return SteadyClockUnixTimeMapper(system_ns - steady_ns);
-}
-
-uint64_t SharedDictStreamProcessor::SteadyClockUnixTimeMapper::to_unix_time_ns(uint64_t steady_timestamp_ns) const {
-    if (steady_timestamp_ns > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-        throw std::runtime_error("steady timestamp is too large to convert to Unix time");
-    }
-
-    const auto steady_timestamp = static_cast<int64_t>(steady_timestamp_ns);
-    if (_steady_to_unix_offset_ns > 0 && steady_timestamp > std::numeric_limits<int64_t>::max() - _steady_to_unix_offset_ns) {
-        throw std::runtime_error("steady timestamp conversion to Unix time overflows");
-    }
-    if (_steady_to_unix_offset_ns < 0 && steady_timestamp < std::numeric_limits<int64_t>::min() - _steady_to_unix_offset_ns) {
-        throw std::runtime_error("steady timestamp conversion to Unix time underflows");
-    }
-
-    const auto unix_timestamp = steady_timestamp + _steady_to_unix_offset_ns;
-    if (unix_timestamp < 0) {
-        throw std::runtime_error("steady timestamp conversion produced a negative Unix timestamp");
-    }
-    return static_cast<uint64_t>(unix_timestamp);
-}
-
-int64_t SharedDictStreamProcessor::SteadyClockUnixTimeMapper::steady_to_unix_offset_ns() const {
-    return _steady_to_unix_offset_ns;
-}
-
-SharedDictStreamProcessor::SharedDictStreamProcessor(
-    mcap::McapWriter& writer,
-    std::mutex& writer_mutex,
-    int jpeg_quality,
-    SteadyClockUnixTimeMapper timestamp_mapper
-) :
-    _writer(writer),
-    _writer_mutex(writer_mutex),
-    _jpeg_quality(jpeg_quality),
-    _timestamp_mapper(timestamp_mapper) {}
-
-void SharedDictStreamProcessor::_get_camera_payload(DataEntry& entry, const SensorStream& stream, uint64_t timestamp_ns, std::vector<std::byte>& payload) {
+bool SharedDictLogger::_get_camera_payload(DataEntry& entry, const SensorStream& stream, uint64_t timestamp_ns, std::vector<std::byte>& payload) {
     const size_t expected_size = stream.width * stream.height * 3;
     if (entry.data.size() < expected_size) {
         spdlog::warn("Camera {} sample too small: {} < {}", stream.name, entry.data.size(), expected_size);
-        return;
+        return false;
     }
 
     cv::Mat const rgb(static_cast<int>(stream.height), static_cast<int>(stream.width), CV_8UC3, entry.data.data());
@@ -313,22 +260,23 @@ void SharedDictStreamProcessor::_get_camera_payload(DataEntry& entry, const Sens
     std::vector<int> const params{cv::IMWRITE_JPEG_QUALITY, _jpeg_quality};
     if (!cv::imencode(".jpg", bgr, encoded, params)) {
         spdlog::warn("Failed JPEG encoding for {}", stream.name);
-        return;
+        return false;
     }
 
     std::ostringstream json;
     json << '{';
     append_timestamp_json(json, timestamp_ns);
     json << R"(,"frame_id":")" << json_escape(stream.name)
-         << R"(","data":")" << base64_encode(encoded)
-         << R"(","format":"jpeg"})";
+         << R"(,"data":")" << base64_encode(encoded)
+         << R"(,"format":"jpeg"})";
     assign_payload(payload, json.str());
+    return true;
 }
 
-void SharedDictStreamProcessor::_get_imu_payload(const DataEntry& entry, uint64_t timestamp_ns, std::vector<std::byte>& payload) {
+bool SharedDictLogger::_get_imu_payload(const DataEntry& entry, uint64_t timestamp_ns, std::vector<std::byte>& payload) {
     if (entry.data.size() < 3U * sizeof(float)) {
         spdlog::warn("IMU sample too small: {} < {}", entry.data.size(), 3U * sizeof(float));
-        return;
+        return false;
     }
 
     std::array<float, 3> xyz{};
@@ -342,10 +290,10 @@ void SharedDictStreamProcessor::_get_imu_payload(const DataEntry& entry, uint64_
          << R"(,"z":)" << xyz[2]
          << '}';
     assign_payload(payload, json.str());
+    return true;
 }
 
-
-void SharedDictStreamProcessor::process(SensorStream& stream) {
+void SharedDictLogger::_process_stream(SensorStream& stream) {
     if (stream.reader == nullptr || !stream.reader->is_ready()) {
         return;
     }
@@ -397,10 +345,14 @@ void SharedDictStreamProcessor::process(SensorStream& stream) {
     std::vector<std::byte> payload;
     const auto timestamp = _timestamp_mapper.to_unix_time_ns(entry.timestamp_ns);
     if (stream.type == StreamType::CAMERA) {
-        _get_camera_payload(entry, stream, timestamp, payload);
+        if (!_get_camera_payload(entry, stream, timestamp, payload)) {
+            return;
+        }
 
     } else if (stream.type == StreamType::IMU) {
-        _get_imu_payload(entry, timestamp, payload);
+        if (!_get_imu_payload(entry, timestamp, payload)) {
+            return;
+        }
 
     } else {
         spdlog::warn("Unknown stream type for {}: {}", stream.name, static_cast<int>(stream.type));
@@ -415,8 +367,8 @@ void SharedDictStreamProcessor::process(SensorStream& stream) {
     msg.data = payload.data();
     msg.dataSize = payload.size();
 
-    std::lock_guard<std::mutex> const lock(_writer_mutex.get());
-    const auto status = _writer.get().write(msg);
+    std::lock_guard<std::mutex> const lock(_writer_mutex);
+    const auto status = _writer.write(msg);
     if (!status.ok()) {
         spdlog::error("Failed to write camera sample for {}: {}", stream.name, status.message);
         return;

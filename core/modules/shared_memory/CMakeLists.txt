@@ -4,7 +4,7 @@ find_package(CUDAToolkit REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgcodecs imgproc)
 
-add_library(shared_memory SHARED master.cpp client/client.cpp client/writer.cpp client/reader.cpp transforms.cpp logger/logger.cpp logger/log_reader.cpp)
+add_library(shared_memory SHARED master.cpp client/client.cpp client/writer.cpp client/reader.cpp transforms.cpp logger/logger.cpp logger/log_reader.cpp logger/steady_clock_unix_time_mapper.cpp)
 target_include_directories(shared_memory PUBLIC ${CMAKE_SOURCE_DIR}/core/utils)
 target_include_directories(shared_memory PUBLIC ${ZLIB_INCLUDE_DIRS})
 

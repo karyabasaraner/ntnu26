@@ -71,7 +71,6 @@ private:
 
 [[nodiscard]] LogFile read_log_file(const std::string& path);
 [[nodiscard]] std::string format_log_metadata(const LogMetadata& metadata);
-void convert_legacy_log_file_to_foxglove(const std::string& input_path, const std::string& output_path);
 
 } // namespace core
 
