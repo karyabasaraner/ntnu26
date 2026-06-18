@@ -11,6 +11,8 @@ cameras:
     settings:
       - name: vertical_flip
         value: 1
+      - name: horizontal_flip
+        value: 1
       - name: white_balance_automatic
         value: 0
       - name: frame_sync

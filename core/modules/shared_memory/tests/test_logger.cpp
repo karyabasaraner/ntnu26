@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <filesystem>
 #include <string>
 #include <system_error>
@@ -44,6 +45,36 @@ public:
 
     [[nodiscard]] std::string string() const {
         return _path.string();
+    }
+
+private:
+    inline static std::size_t _counter{0};
+    std::filesystem::path _path;
+};
+
+class TempConfigPath {
+public:
+    TempConfigPath() :
+        _path(std::filesystem::temp_directory_path() /
+              std::filesystem::path("core-logger-config-" + std::to_string(_counter++) + ".yaml")) {}
+
+    ~TempConfigPath() {
+        std::error_code error;
+        std::filesystem::remove(_path, error);
+    }
+
+    TempConfigPath(const TempConfigPath&) = delete;
+    TempConfigPath& operator=(const TempConfigPath&) = delete;
+    TempConfigPath(TempConfigPath&&) = delete;
+    TempConfigPath& operator=(TempConfigPath&&) = delete;
+
+    [[nodiscard]] std::string string() const {
+        return _path.string();
+    }
+
+    void write_text(const std::string& content) const {
+        std::ofstream out(_path);
+        out << content;
     }
 
 private:
@@ -232,4 +263,75 @@ TEST(LoggerTest, LoggerSkipsInvalidCameraSampleWithoutWritingMessages) {
     // THEN: No IMU messages are written and the log remains empty
     const auto log_file = core::read_log_file(output_path.string());
     EXPECT_TRUE(log_file.topics().empty());
+}
+
+TEST(LoggerTest, LoggerWritesCameraSampleToMcap) {
+    // GIVEN: A minimal camera config, shared memory, and a camera writer
+    TempConfigPath const config_path;
+    config_path.write_text(
+        R"(cameras:
+  - name: cam0
+    writer:
+      width: 1
+      height: 1
+    device: /dev/video0
+    fps: 30
+    subsample_factor: 1
+    settings: []
+    format: UYVY
+    req_buffer_count: 1
+imus: []
+shared_memory:
+  - name: cam0
+    size_per_frame: 3
+    num_frames: 2
+)"
+    );
+
+    TempMcapPath const output_path;
+    {
+        const core::SharedDictMaster shared_dict_master(config_path.string());
+        static_cast<void>(shared_dict_master);
+        core::WriterConfig camera_writer_config;
+        camera_writer_config.width = 1U;
+        camera_writer_config.height = 1U;
+        core::SharedDictWriter shared_dict_writer("cam0", camera_writer_config);
+        const core::SharedDictClient shared_dict_client("cam0");
+        ASSERT_TRUE(shared_dict_client.is_ready());
+
+        core::SharedDictLogger logger(config_path.string(), output_path.string());
+        std::thread logger_thread;
+        run_logger_until_stopped(logger, logger_thread);
+
+        // WHEN: A camera sample is published and the logger has time to consume it
+        const std::array<std::byte, 3> rgb_sample{std::byte{0x10}, std::byte{0x20}, std::byte{0x30}};
+        shared_dict_writer.add(
+            "cam0",
+            rgb_sample.data(),
+            rgb_sample.size(),
+            9U,
+            654321U);
+
+        core::Buffer* const buffer = shared_dict_client.get_buffer();
+        ASSERT_NE(buffer, nullptr);
+        ASSERT_TRUE(core::test::wait_for_predicate([buffer] {
+            return buffer->sequence.load(std::memory_order_acquire) == 9U;
+        }));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        logger.request_stop();
+        logger_thread.join();
+    }
+
+    // THEN: The logger writes a Foxglove-compatible compressed image message
+    const auto log_file = core::read_log_file(output_path.string());
+    const auto* camera = log_file.get_camera_data("/camera/cam0/image/compressed");
+    ASSERT_NE(camera, nullptr);
+    ASSERT_EQ(camera->timestamp_ns.size(), 1U);
+    ASSERT_EQ(camera->frame_id.size(), 1U);
+    ASSERT_EQ(camera->format.size(), 1U);
+    ASSERT_EQ(camera->jpeg_data.size(), 1U);
+    EXPECT_EQ(camera->frame_id[0], "cam0");
+    EXPECT_EQ(camera->format[0], "jpeg");
+    EXPECT_FALSE(camera->jpeg_data[0].empty());
 }

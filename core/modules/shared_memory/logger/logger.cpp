@@ -93,6 +93,10 @@ void append_timestamp_json(std::ostringstream& out, uint64_t timestamp_ns) {
         << R"(,"nsec":)" << (timestamp_ns % kNanosecondsPerSecond) << '}';
 }
 
+void append_json_string_field(std::ostringstream& out, const char* key, const std::string& value) {
+    out << R"(,")" << key << R"(":")" << json_escape(value) << '"';
+}
+
 void assign_payload(std::vector<std::byte>& payload, const std::string& json) {
     payload.reserve(json.size());
     std::transform(json.begin(), json.end(), std::back_inserter(payload), [](char character) {
@@ -268,9 +272,9 @@ bool SharedDictLogger::_get_camera_payload(DataEntry& entry, const SensorStream&
     std::ostringstream json;
     json << '{';
     append_timestamp_json(json, timestamp_ns);
-    json << R"(,"frame_id":")" << json_escape(stream.name)
-         << R"(,"data":")" << base64_encode(encoded)
-         << R"(,"format":"jpeg")";
+    append_json_string_field(json, "frame_id", stream.name);
+    append_json_string_field(json, "data", base64_encode(encoded));
+    append_json_string_field(json, "format", "jpeg");
     json << '}';
     assign_payload(payload, json.str());
     return true;

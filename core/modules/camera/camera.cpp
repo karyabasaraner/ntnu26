@@ -83,16 +83,17 @@ bool Camera::start() {
 void Camera::stop() {
     spdlog::info("Stopping camera: {}", _config.device);
     _running = false;
-    if (_worker.joinable()) {
-        _worker.join();
-    }
-    spdlog::info("Stopped capture thread for camera: {}", _config.device);
 
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(_file_desc, VIDIOC_STREAMOFF, &type) < 0) {
         spdlog::warn("Failed to stop streaming for device: {}, {}", _config.device, errno);
     }
     spdlog::info("Stopped streaming for camera: {}", _config.device);
+
+    if (_worker.joinable()) {
+        _worker.join();
+    }
+    spdlog::info("Stopped capture thread for camera: {}", _config.device);
 
     if (is_valid()) {
         for (const auto buffer : _buffers) {

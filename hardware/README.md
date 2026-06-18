@@ -178,7 +178,7 @@ cpp -nostdinc -undef -x assembler-with-cpp -I $KERNEL_SRC_INLUDE -I $KERNEL_SRC_
 dtc -@ -I dts -O dtb -o bmi088-overlay.dtbo hardware/bmi088-overlay.pp.dts
 ```
 
-3. Copy it to the `\boot\` dir.
+3. Copy it to the `/boot/` dir.
 4. Now we want to combine the e-con systems and the BMI overlay:
 ```
 sudo fdtoverlay \
@@ -188,7 +188,7 @@ sudo fdtoverlay \
   /boot/bmi088-overlay.dtbo
 ```
 
-which allows us to replace the `\boot\extlinux\extlinux.conf` entry:
+which allows us to replace the `/boot/extlinux/extlinux.conf` entry:
 ```
 LABEL JetsonIO
 	MENU LABEL Custom Header Config: <CSI Jetson Camera AR0234>
