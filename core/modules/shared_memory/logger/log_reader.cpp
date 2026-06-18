@@ -178,16 +178,42 @@ std::string message_data_to_string(const mcap::Message& message, const std::stri
 
 std::size_t find_json_field(const std::string& json, const std::string& field, const std::string& topic) {
     const auto key = "\"" + field + "\"";
-    const auto key_position = json.find(key);
-    if (key_position == std::string::npos) {
-        throw std::runtime_error("Missing JSON field '" + field + "' for topic '" + topic + "'");
-    }
+    auto search_position = std::size_t{0};
 
-    const auto colon_position = json.find(':', key_position + key.size());
-    if (colon_position == std::string::npos) {
-        throw std::runtime_error("Malformed JSON field '" + field + "' for topic '" + topic + "'");
+    while (true) {
+        const auto key_position = json.find(key, search_position);
+        if (key_position == std::string::npos) {
+            throw std::runtime_error(
+                std::string("Missing JSON field '").append(field).append("' for topic '").append(topic).append("'")
+            );
+        }
+
+        auto previous_position = key_position;
+        bool has_previous_non_whitespace = false;
+        while (previous_position > 0U) {
+            --previous_position;
+            if (std::isspace(static_cast<unsigned char>(json[previous_position])) == 0) {
+                has_previous_non_whitespace = true;
+                break;
+            }
+        }
+
+        if (!has_previous_non_whitespace || (json[previous_position] != '{' && json[previous_position] != ',')) {
+            search_position = key_position + key.size();
+            continue;
+        }
+
+        auto colon_position = key_position + key.size();
+        while (colon_position < json.size() && std::isspace(static_cast<unsigned char>(json[colon_position])) != 0) {
+            ++colon_position;
+        }
+        if (colon_position >= json.size() || json[colon_position] != ':') {
+            search_position = key_position + key.size();
+            continue;
+        }
+
+        return colon_position + 1U;
     }
-    return colon_position + 1U;
 }
 
 std::size_t skip_whitespace(const std::string& json, std::size_t offset) {

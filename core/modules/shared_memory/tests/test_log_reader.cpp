@@ -142,6 +142,29 @@ void write_test_log(const std::string& path) {
     writer.close();
 }
 
+void write_regression_log_with_embedded_field_name(const std::string& path) {
+    mcap::McapWriter writer;
+    mcap::McapWriterOptions options("core");
+    options.compression = mcap::Compression::Zstd;
+    const auto open_status = writer.open(path, options);
+    ASSERT_TRUE(open_status.ok()) << open_status.message;
+
+    mcap::Schema image_schema(core::CompressedImageSchemaName, core::JsonSchemaEncoding, core::CompressedImageSchema.data());
+    writer.addSchema(image_schema);
+    mcap::Channel image_channel("/camera/front/image/compressed", core::JsonMessageEncoding, image_schema.id);
+    writer.addChannel(image_channel);
+
+    std::ostringstream json;
+    json << R"({"frame_id":"sec","timestamp":{"sec":)" << (1'500'000'000ULL / 1'000'000'000ULL)
+         << R"(,"nsec":)" << (1'500'000'000ULL % 1'000'000'000ULL)
+         << R"(},"data":"/9j/2Q==","format":"jpeg"})";
+
+    std::vector<std::byte> payload;
+    assign_payload(payload, json.str());
+    write_message(writer, image_channel.id, 3U, 1'500'000'000ULL, payload);
+    writer.close();
+}
+
 struct FoxgloveChannelMetadataCheck {
     bool saw_imu_channel{false};
     bool saw_image_channel{false};
@@ -238,4 +261,21 @@ TEST(LogReaderTest, ReadLogFileLoadsTopicsDataAndMetadata) {
     EXPECT_GT(camera_metadata.payload_bytes, 0U);
     EXPECT_DOUBLE_EQ(camera_metadata.duration_s, 0.0);
     EXPECT_DOUBLE_EQ(camera_metadata.average_rate_hz, 0.0);
+}
+
+TEST(LogReaderTest, ReadLogFileIgnoresFieldTextInsideStringValues) {
+    // GIVEN: A log contains a JSON string value that includes the text of a real field name
+    TempMcapPath const path;
+    write_regression_log_with_embedded_field_name(path.string());
+
+    // WHEN: The log is read back into memory
+    const auto log_file = core::read_log_file(path.string());
+
+    // THEN: The parser ignores the string value and still extracts the real object key
+    const auto* camera = log_file.get_camera_data("/camera/front/image/compressed");
+    ASSERT_NE(camera, nullptr);
+    ASSERT_EQ(camera->frame_id.size(), 1U);
+    ASSERT_EQ(camera->timestamp_ns.size(), 1U);
+    EXPECT_EQ(camera->frame_id[0], "sec");
+    EXPECT_EQ(camera->timestamp_ns[0], 1'500'000'000ULL);
 }
