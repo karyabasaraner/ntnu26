@@ -1,0 +1,14 @@
+[Unit]
+Description=Set Jetson VI and ISP clocks to maximum
+After=local-fs.target sys-kernel-debug.mount
+RequiresMountsFor=/sys/kernel/debug
+ConditionPathExists=/opt/nvidia/max_clocks/max-isp-vi-clks.sh
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/nvidia/max_clocks/max-isp-vi-clks.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

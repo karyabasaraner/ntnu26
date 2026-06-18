@@ -104,9 +104,16 @@ sudo cp kernel-devicetree/generic-dts/dtbs/tegra234-p3701-0000-p3737-0000-two-la
 15. Modifying the rootfs
 ```
 sudo mkdir -p $LDK_ROOTFS_DIR/opt/nvidia/max_clocks
-sudo cp $RELEASE_PACK_DIR/misc/max-isp-vi-clks.sh $LDK_ROOTFS_DIR/opt/nvidia/max_clocks/max-isp-vi-clks.sh -f
+sudo cp scripts/max-isp-vi-clks.sh $LDK_ROOTFS_DIR/opt/nvidia/max_clocks/max-isp-vi-clks.sh -f
 sudo chmod +x $LDK_ROOTFS_DIR/opt/nvidia/max_clocks/max-isp-vi-clks.sh
+sudo install -Dm644 scripts/max-isp-vi-clks.service $LDK_ROOTFS_DIR/etc/systemd/system/max-isp-vi-clks.service
+sudo mkdir -p $LDK_ROOTFS_DIR/etc/systemd/system/multi-user.target.wants
+sudo ln -sf ../max-isp-vi-clks.service $LDK_ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/max-isp-vi-clks.service
 ```
+
+The `max-isp-vi-clks.service` unit runs the clock script as root during boot, so the
+`nvpmodel`, `jetson_clocks`, and `/sys/kernel/debug/bpmp/debug/clk/*` writes do not
+depend on an interactive `sudo` session.
 
 16. Update v4l2 compliance TODO Not working
 ```
