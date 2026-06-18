@@ -91,10 +91,6 @@ nb::dict topic_metadata_to_dict(const core::TopicMetadata& metadata) {
     result["duration_s"] = metadata.duration_s;
     result["average_rate_hz"] = metadata.average_rate_hz;
     result["payload_bytes"] = metadata.payload_bytes;
-    result["timestamp_source"] = metadata.timestamp_source;
-    result["timestamp_clock_domain"] = metadata.timestamp_clock_domain;
-    result["timestamp_quality"] = metadata.timestamp_quality;
-    result["uses_timestamp_fallback"] = metadata.uses_timestamp_fallback;
     return result;
 }
 
@@ -118,10 +114,6 @@ nb::dict imu_series_to_dict(const core::LoggedImuSeries& series) {
     nb::dict result;
     result["topic"] = series.topic;
     result["timestamp_ns"] = vector_to_numpy(series.timestamp_ns);
-    result["host_receive_timestamp_ns"] = vector_to_numpy(series.host_receive_timestamp_ns);
-    result["timestamp_source"] = series.timestamp_source;
-    result["timestamp_clock_domain"] = series.timestamp_clock_domain;
-    result["timestamp_quality"] = series.timestamp_quality;
     result["sequence"] = vector_to_numpy(series.sequence);
     result["x"] = vector_to_numpy(series.x);
     result["y"] = vector_to_numpy(series.y);
@@ -133,10 +125,6 @@ nb::dict camera_series_to_dict(const core::LoggedCompressedImageSeries& series) 
     nb::dict result;
     result["topic"] = series.topic;
     result["timestamp_ns"] = vector_to_numpy(series.timestamp_ns);
-    result["host_receive_timestamp_ns"] = vector_to_numpy(series.host_receive_timestamp_ns);
-    result["timestamp_source"] = series.timestamp_source;
-    result["timestamp_clock_domain"] = series.timestamp_clock_domain;
-    result["timestamp_quality"] = series.timestamp_quality;
     result["frame_id"] = series.frame_id;
     result["format"] = series.format;
 

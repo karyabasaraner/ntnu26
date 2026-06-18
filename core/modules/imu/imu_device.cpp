@@ -1,17 +1,14 @@
 #include "imu_device.hpp"
 
-#include "../shared_memory/utils.hpp"
 #include "configs.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
-#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iio.h>
-#include <limits>
 #include <poll.h>
 #include <spdlog/spdlog.h>
 #include <string>
@@ -23,23 +20,6 @@
 
 namespace core {
 namespace {
-
-constexpr int64_t kMaximumPlausibleClockDeltaNs = 10'000'000'000LL;
-
-uint64_t steady_clock_now_ns() {
-    return static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()
-    );
-}
-
-bool is_plausible_monotonic_timestamp(int64_t timestamp_ns, uint64_t host_receive_timestamp_ns) {
-    if (timestamp_ns < 0 || host_receive_timestamp_ns > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-        return false;
-    }
-    const auto host_timestamp_ns = static_cast<int64_t>(host_receive_timestamp_ns);
-    const auto delta_ns = timestamp_ns > host_timestamp_ns ? timestamp_ns - host_timestamp_ns : host_timestamp_ns - timestamp_ns;
-    return delta_ns <= kMaximumPlausibleClockDeltaNs;
-}
 
 } // namespace
 
@@ -61,7 +41,11 @@ void IMUDevice::start() {
         return;
     }
 
-    _prepare_channels();
+    if (!_prepare_channels()) {
+        _destroy_resources();
+        _running.store(false, std::memory_order_release);
+        return;
+    }
     _configure_device();
 
     if (!_setup_buffer()) {
@@ -114,7 +98,7 @@ bool IMUDevice::_open_context() {
     return true;
 }
 
-void IMUDevice::_prepare_channels() {
+bool IMUDevice::_prepare_channels() {
     for (const std::string& name : _config.channels) {
         struct iio_channel* channel = iio_device_find_channel(_device, name.c_str(), false);
         if (channel == nullptr) {
@@ -128,6 +112,7 @@ void IMUDevice::_prepare_channels() {
 
     if (_channels.empty()) {
         spdlog::error("No IMU data channels enabled for {}. Buffer acquisition requires at least one axis channel.", _config.device);
+        return false;
     }
 
     // Enable timestamp channel so buffered samples carry acquisition time.
@@ -136,8 +121,10 @@ void IMUDevice::_prepare_channels() {
         iio_channel_enable(_timestamp_channel);
         spdlog::info("Enabled timestamp channel for {}", _config.device);
     } else {
-        spdlog::warn("Timestamp channel not found for {}", _config.device);
+        spdlog::error("Timestamp channel not found for {}", _config.device);
+        return false;
     }
+    return true;
 }
 
 void IMUDevice::_set_channel_attr(struct iio_channel* channel, const std::string& attr_name, double value) {
@@ -201,7 +188,6 @@ void IMUDevice::_read_and_process_samples() {
     }
 
     // 1. Refill buffer with new samples from device
-    const auto host_receive_timestamp_ns = steady_clock_now_ns();
     const ssize_t refill_ret = iio_buffer_refill(_buffer);
     if (refill_ret <= 0) {
         spdlog::warn("Failed to refill IIO buffer for {}: {}", _config.device, -refill_ret);
@@ -215,21 +201,21 @@ void IMUDevice::_read_and_process_samples() {
     // 3. Iterate over samples in buffer and decode them
     for (size_t index = 0; index < num_samples_in_buffer; ++index) {
         // 3a. Decode timestamp
-        TimestampMetadata timestamp_metadata;
-        timestamp_metadata.host_receive_timestamp_ns = host_receive_timestamp_ns;
-        uint64_t timestamp_ns = host_receive_timestamp_ns;
-        if (_timestamp_channel != nullptr) {
-            // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-            const char* timestamp_ptr = static_cast<const char*>(iio_buffer_first(_buffer, _timestamp_channel)) + static_cast<ptrdiff_t>(index) * step;
-            if (timestamp_ptr >= static_cast<const char*>(iio_buffer_end(_buffer))) {
-                spdlog::warn("Timestamp pointer out of buffer bounds for sample {}", index);
-                continue;
-            }
-
-            int64_t timestamp_imu = 0;
-            iio_channel_convert(_timestamp_channel, &timestamp_imu, timestamp_ptr);
-            timestamp_ns = _map_iio_timestamp_ns(timestamp_imu, host_receive_timestamp_ns, timestamp_metadata);
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+        const char* timestamp_ptr = static_cast<const char*>(iio_buffer_first(_buffer, _timestamp_channel)) + static_cast<ptrdiff_t>(index) * step;
+        if (timestamp_ptr >= static_cast<const char*>(iio_buffer_end(_buffer))) {
+            spdlog::warn("Timestamp pointer out of buffer bounds for sample {}", index);
+            continue;
         }
+
+        int64_t timestamp_imu = 0;
+        iio_channel_convert(_timestamp_channel, &timestamp_imu, timestamp_ptr);
+        if (timestamp_imu < 0) {
+            spdlog::warn("Skipping IMU sample {} with negative timestamp {}", index, timestamp_imu);
+            continue;
+        }
+
+        const auto timestamp_ns = static_cast<uint64_t>(timestamp_imu);
 
         // 3b. Decode data channels
         std::vector<float> channel_data;
@@ -255,40 +241,9 @@ void IMUDevice::_read_and_process_samples() {
 
         // 3c. Submit to writer
         const size_t length = channel_data.size() * sizeof(float);
-        _shdict_writer.add(_config.name, channel_data.data(), length, _sequence, timestamp_ns, timestamp_metadata);
+        _shdict_writer.add(_config.name, channel_data.data(), length, _sequence, timestamp_ns);
         _sequence++;
     }
-}
-
-uint64_t IMUDevice::_map_iio_timestamp_ns(int64_t timestamp_imu, uint64_t host_receive_timestamp_ns, TimestampMetadata& timestamp_metadata) {
-    timestamp_metadata.host_receive_timestamp_ns = host_receive_timestamp_ns;
-    timestamp_metadata.source = TimestampSource::IIO_HARDWARE;
-    timestamp_metadata.clock_domain = TimestampClockDomain::MONOTONIC;
-
-    if (is_plausible_monotonic_timestamp(timestamp_imu, host_receive_timestamp_ns)) {
-        timestamp_metadata.quality = TimestampQuality::HARDWARE;
-        return static_cast<uint64_t>(timestamp_imu);
-    }
-
-    if (timestamp_imu < 0 || host_receive_timestamp_ns > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-        timestamp_metadata.source = TimestampSource::HOST_FALLBACK;
-        timestamp_metadata.quality = TimestampQuality::FALLBACK;
-        return host_receive_timestamp_ns;
-    }
-
-    if (!_iio_to_steady_offset_ns.has_value()) {
-        _iio_to_steady_offset_ns = static_cast<int64_t>(host_receive_timestamp_ns) - timestamp_imu;
-        spdlog::warn("IIO timestamp for {} is not in host monotonic domain; using one stable offset for this session", _config.device);
-    }
-
-    timestamp_metadata.quality = TimestampQuality::KERNEL;
-    const auto mapped_timestamp_ns = timestamp_imu + *_iio_to_steady_offset_ns;
-    if (mapped_timestamp_ns < 0) {
-        timestamp_metadata.source = TimestampSource::HOST_FALLBACK;
-        timestamp_metadata.quality = TimestampQuality::FALLBACK;
-        return host_receive_timestamp_ns;
-    }
-    return static_cast<uint64_t>(mapped_timestamp_ns);
 }
 
 bool IMUDevice::_setup_buffer() {

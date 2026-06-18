@@ -3,7 +3,6 @@
 
 #include "../utils/configs.hpp"
 #include "../shared_memory/client/writer.hpp"
-#include "../shared_memory/utils.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -54,7 +53,7 @@ private:
     bool _init_mmap();
     bool _open_device();
     void _capture_loop();
-    void _process_frame(void* data, size_t length, uint32_t sequence, uint64_t timestamp_ns, TimestampMetadata timestamp_metadata);
+    void _process_frame(void* data, size_t length, uint32_t sequence, uint64_t timestamp_ns);
     std::string _get_ctrl_name(uint32_t ctrl_id) const;
 };
 

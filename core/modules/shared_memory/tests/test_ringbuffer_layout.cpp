@@ -16,13 +16,9 @@ TEST(SharedMemoryLayoutTest, DataFrameHeaderHasExpectedStableShape) {
 
     // THEN: The metadata fields keep their expected positions before payload data
     EXPECT_EQ(offsetof(core::DataFrame, timestamp_ns), 0U);
-    EXPECT_EQ(offsetof(core::DataFrame, host_receive_timestamp_ns), sizeof(uint64_t));
-    EXPECT_EQ(offsetof(core::DataFrame, checksum), 2U * sizeof(uint64_t));
-    EXPECT_EQ(offsetof(core::DataFrame, sequence), 2U * sizeof(uint64_t) + sizeof(uint32_t));
-    EXPECT_EQ(offsetof(core::DataFrame, timestamp_source), 2U * sizeof(uint64_t) + 2U * sizeof(uint32_t));
-    EXPECT_EQ(offsetof(core::DataFrame, timestamp_clock_domain), 2U * sizeof(uint64_t) + 2U * sizeof(uint32_t) + sizeof(uint8_t));
-    EXPECT_EQ(offsetof(core::DataFrame, timestamp_quality), 2U * sizeof(uint64_t) + 2U * sizeof(uint32_t) + 2U * sizeof(uint8_t));
-    EXPECT_EQ(offsetof(core::DataFrame, data), 2U * sizeof(uint64_t) + 2U * sizeof(uint32_t) + 4U * sizeof(uint8_t));
+    EXPECT_EQ(offsetof(core::DataFrame, checksum), sizeof(uint64_t));
+    EXPECT_EQ(offsetof(core::DataFrame, sequence), sizeof(uint64_t) + sizeof(uint32_t));
+    EXPECT_EQ(offsetof(core::DataFrame, data), sizeof(uint64_t) + 2U * sizeof(uint32_t));
 }
 
 TEST(SharedMemoryLayoutTest, BufferHeaderStartsWithRingbufferState) {
@@ -39,13 +35,8 @@ TEST(SharedMemoryLayoutTest, BufferHeaderStartsWithRingbufferState) {
 }
 
 TEST(SharedMemoryLayoutTest, LayoutTracksNamedBuffersAndPayloadEntries) {
-    // GIVEN: A data entry carries a named payload and metadata
-    core::TimestampMetadata timestamp_metadata;
-    timestamp_metadata.host_receive_timestamp_ns = 7U;
-    timestamp_metadata.source = core::TimestampSource::V4L2_BUFFER;
-    timestamp_metadata.clock_domain = core::TimestampClockDomain::MONOTONIC;
-    timestamp_metadata.quality = core::TimestampQuality::KERNEL;
-    core::DataEntry const entry{"camera", {1U, 2U, 3U}, 4U, 5U, 6U, timestamp_metadata};
+    // GIVEN: A data entry carries a named payload and timestamp
+    core::DataEntry const entry{"camera", {1U, 2U, 3U}, 4U, 5U, 6U};
 
     // WHEN: The entry and shared-memory namespace are inspected
 
@@ -56,10 +47,6 @@ TEST(SharedMemoryLayoutTest, LayoutTracksNamedBuffersAndPayloadEntries) {
     EXPECT_EQ(entry.head, 4U);
     EXPECT_EQ(entry.sequence, 5U);
     EXPECT_EQ(entry.timestamp_ns, 6U);
-    EXPECT_EQ(entry.timestamp_metadata.host_receive_timestamp_ns, 7U);
-    EXPECT_EQ(entry.timestamp_metadata.source, core::TimestampSource::V4L2_BUFFER);
-    EXPECT_EQ(entry.timestamp_metadata.clock_domain, core::TimestampClockDomain::MONOTONIC);
-    EXPECT_EQ(entry.timestamp_metadata.quality, core::TimestampQuality::KERNEL);
 }
 
 } // namespace

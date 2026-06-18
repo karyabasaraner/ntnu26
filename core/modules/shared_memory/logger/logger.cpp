@@ -93,13 +93,6 @@ void append_timestamp_json(std::ostringstream& out, uint64_t timestamp_ns) {
         << R"(,"nsec":)" << (timestamp_ns % kNanosecondsPerSecond) << '}';
 }
 
-void append_timestamp_metadata_json(std::ostringstream& out, const TimestampMetadata& metadata, uint64_t host_receive_timestamp_ns) {
-    out << R"(,"timestamp_source":")" << timestamp_source_to_string(metadata.source)
-        << R"(","timestamp_clock_domain":")" << timestamp_clock_domain_to_string(metadata.clock_domain)
-        << R"(","timestamp_quality":")" << timestamp_quality_to_string(metadata.quality)
-        << R"(","host_receive_timestamp_ns":)" << host_receive_timestamp_ns;
-}
-
 void assign_payload(std::vector<std::byte>& payload, const std::string& json) {
     payload.reserve(json.size());
     std::transform(json.begin(), json.end(), std::back_inserter(payload), [](char character) {
@@ -168,9 +161,6 @@ void SharedDictLogger::_register_channels() {
     mcap::Metadata timestamp_metadata;
     timestamp_metadata.name = "core.timestamp";
     timestamp_metadata.metadata = {
-        {"timestamp_domain", "unix_epoch"},
-        {"source_timestamp_domain", "monotonic"},
-        {"timestamp_policy", "sensor_acquisition_time_with_warn_and_fallback"},
         {"steady_to_unix_offset_ns", std::to_string(_timestamp_mapper.steady_to_unix_offset_ns())},
     };
     const auto metadata_status = _writer.write(timestamp_metadata);
@@ -187,10 +177,6 @@ void SharedDictLogger::_register_channels() {
     for (auto& stream : _sensor_streams) {
         if (stream.type == StreamType::CAMERA) {
             mcap::KeyValueMap const metadata{
-                {"timestamp_domain", "unix_epoch"},
-                {"source_timestamp_domain", "monotonic"},
-                {"timestamp_source", "v4l2_buffer_or_host_fallback"},
-                {"timestamp_quality", "kernel_or_fallback"},
             };
             mcap::Channel channel("/camera/" + stream.name + "/image/compressed", JsonMessageEncoding, image_schema.id, metadata);
             _writer.addChannel(channel);
@@ -198,10 +184,6 @@ void SharedDictLogger::_register_channels() {
 
         } else if (stream.type == StreamType::IMU) {
             mcap::KeyValueMap const metadata{
-                {"timestamp_domain", "unix_epoch"},
-                {"source_timestamp_domain", "monotonic"},
-                {"timestamp_source", "iio_hardware_or_host_fallback"},
-                {"timestamp_quality", "hardware_or_kernel_or_fallback"},
             };
             mcap::Channel channel("/imu/" + stream.name, JsonMessageEncoding, imu_schema.id, metadata);
             _writer.addChannel(channel);
@@ -288,7 +270,8 @@ bool SharedDictLogger::_get_camera_payload(DataEntry& entry, const SensorStream&
     append_timestamp_json(json, timestamp_ns);
     json << R"(,"frame_id":")" << json_escape(stream.name)
          << R"(,"data":")" << base64_encode(encoded)
-         << R"(,"format":"jpeg"})";
+         << R"(,"format":"jpeg")";
+    json << '}';
     assign_payload(payload, json.str());
     return true;
 }
@@ -307,8 +290,8 @@ bool SharedDictLogger::_get_imu_payload(const DataEntry& entry, uint64_t timesta
     json << R"(,"sequence":)" << entry.sequence
          << R"(,"x":)" << xyz[0]
          << R"(,"y":)" << xyz[1]
-         << R"(,"z":)" << xyz[2]
-         << '}';
+         << R"(,"z":)" << xyz[2];
+    json << '}';
     assign_payload(payload, json.str());
     return true;
 }

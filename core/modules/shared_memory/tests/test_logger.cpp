@@ -8,7 +8,6 @@
 #include "../logger/steady_clock_unix_time_mapper.hpp"
 #include "../master.hpp"
 #include "../ringbuffer.hpp"
-#include "../utils.hpp"
 #include "configs.hpp"
 
 #include <array>
@@ -54,10 +53,6 @@ private:
 
 struct LoggedImuMessage {
     uint64_t timestamp_ns{0};
-    uint64_t host_receive_timestamp_ns{0};
-    std::string timestamp_source;
-    std::string timestamp_clock_domain;
-    std::string timestamp_quality;
     uint32_t sequence{0};
     float x{0.0F};
     float y{0.0F};
@@ -124,18 +119,12 @@ TEST(LoggerTest, LoggerWritesImuSampleToMcap) {
 
         // WHEN: An IMU sample is published and the logger has time to consume it
         const std::array<float, 3> imu_sample{1.25F, -2.5F, 3.75F};
-        core::TimestampMetadata timestamp_metadata;
-        timestamp_metadata.host_receive_timestamp_ns = 425000U;
-        timestamp_metadata.source = core::TimestampSource::IIO_HARDWARE;
-        timestamp_metadata.clock_domain = core::TimestampClockDomain::MONOTONIC;
-        timestamp_metadata.quality = core::TimestampQuality::HARDWARE;
         shared_dict_writer.add(
             "accelerometer",
             imu_sample.data(),
             sizeof(imu_sample),
             41U,
-            424242U,
-            timestamp_metadata);
+            424242U);
 
         core::Buffer* const buffer = shared_dict_client.get_buffer();
         ASSERT_NE(buffer, nullptr);
@@ -148,7 +137,7 @@ TEST(LoggerTest, LoggerWritesImuSampleToMcap) {
         logger_thread.join();
     }
 
-    // THEN: The logger writes one IMU message with the sample payload and metadata
+    // THEN: The logger writes one IMU message with the sample payload and timestamp
     const auto messages = read_imu_messages(output_path.string());
     ASSERT_EQ(messages.size(), 1U);
     EXPECT_GT(messages[0].timestamp_ns, 0ULL);
@@ -156,6 +145,12 @@ TEST(LoggerTest, LoggerWritesImuSampleToMcap) {
     EXPECT_FLOAT_EQ(messages[0].x, 1.25F);
     EXPECT_FLOAT_EQ(messages[0].y, -2.5F);
     EXPECT_FLOAT_EQ(messages[0].z, 3.75F);
+
+    const auto log_file = core::read_log_file(output_path.string());
+    const auto* imu = log_file.get_imu_data("/imu/accelerometer");
+    ASSERT_NE(imu, nullptr);
+    ASSERT_EQ(imu->timestamp_ns.size(), 1U);
+    ASSERT_EQ(imu->sequence.size(), 1U);
 }
 
 TEST(LoggerTest, LoggerSkipsInvalidImuSampleWithoutWritingMessages) {

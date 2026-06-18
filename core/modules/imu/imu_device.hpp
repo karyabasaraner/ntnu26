@@ -3,14 +3,12 @@
 
 #include <atomic>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
 #include "../shared_memory/client/writer.hpp"
-#include "../shared_memory/utils.hpp"
 #include "../utils/configs.hpp"
 
 extern "C" {
@@ -54,7 +52,6 @@ private:
     struct iio_channel* _timestamp_channel{nullptr};
     struct iio_context* _context{nullptr};
     struct iio_device* _device{nullptr};
-    std::optional<int64_t> _iio_to_steady_offset_ns;
     uint32_t _sequence{0};
 
     bool _open_context();
@@ -62,9 +59,8 @@ private:
     void _capture_loop();
     void _configure_device();
     void _destroy_resources();
-    void _prepare_channels();
+    bool _prepare_channels();
     void _read_and_process_samples();
-    uint64_t _map_iio_timestamp_ns(int64_t timestamp_imu, uint64_t host_receive_timestamp_ns, TimestampMetadata& timestamp_metadata);
     static void _set_channel_attr(struct iio_channel* channel, const std::string& attr_name, double value);
 };
 

@@ -46,19 +46,12 @@ SharedDictWriter::~SharedDictWriter() {
     }
 }
 
-void SharedDictWriter::add(const std::string& key, const void* data, size_t length, uint32_t sequence, uint64_t timestamp_ns) {
-    TimestampMetadata metadata;
-    metadata.host_receive_timestamp_ns = timestamp_ns;
-    add(key, data, length, sequence, timestamp_ns, metadata);
-}
-
 void SharedDictWriter::add(
     const std::string& key,
     const void* data,
     size_t length,
     uint32_t sequence,
-    uint64_t timestamp_ns,
-    TimestampMetadata timestamp_metadata
+    uint64_t timestamp_ns
 ) {
     // Keep this fast: copy and enqueue only.
     if (length == 0) {
@@ -78,10 +71,7 @@ void SharedDictWriter::add(
             spdlog::warn("Writer stopped; not adding data: {}", key);
             return;
         }
-        if (timestamp_metadata.host_receive_timestamp_ns == 0U) {
-            timestamp_metadata.host_receive_timestamp_ns = timestamp_ns;
-        }
-        _data_queue.push(DataEntry{key, std::move(buf), 0, sequence, timestamp_ns, timestamp_metadata});
+        _data_queue.push(DataEntry{key, std::move(buf), 0, sequence, timestamp_ns});
     }
     _cv.notify_one();
 }
@@ -150,11 +140,6 @@ void SharedDictWriter::_process_queue() {
         entry.head = next_head;
 
         frame->timestamp_ns = entry.timestamp_ns;
-        frame->host_receive_timestamp_ns = entry.timestamp_metadata.host_receive_timestamp_ns;
-        frame->timestamp_source = static_cast<uint8_t>(entry.timestamp_metadata.source);
-        frame->timestamp_clock_domain = static_cast<uint8_t>(entry.timestamp_metadata.clock_domain);
-        frame->timestamp_quality = static_cast<uint8_t>(entry.timestamp_metadata.quality);
-        frame->timestamp_reserved = 0U;
 
         // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay,hicpp-no-array-decay)
         std::memcpy(frame->data, entry.data.data(), entry.data.size());
