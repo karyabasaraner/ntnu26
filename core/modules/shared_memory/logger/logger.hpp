@@ -7,6 +7,7 @@
 #include "../utils.hpp"
 #include "configs.hpp"
 #include "mcap/types.hpp"
+#include "stream_progress.hpp"
 #include "steady_clock_unix_time_mapper.hpp"
 
 #include <atomic>
@@ -66,7 +67,8 @@ private:
     void _open_writer();
     void _register_channels();
     void _process_stream(SensorStream& stream);
-    bool _get_camera_payload(DataEntry& entry, const SensorStream& stream, uint64_t timestamp_ns, std::vector<std::byte>& payload);
+    bool _write_entry(SensorStream& stream, const DataEntry& entry);
+    bool _get_camera_payload(const DataEntry& entry, const SensorStream& stream, uint64_t timestamp_ns, std::vector<std::byte>& payload);
     static bool _get_imu_payload(const DataEntry& entry, uint64_t timestamp_ns, std::vector<std::byte>& payload);
 };
 

@@ -5,6 +5,7 @@
 #include "../client/writer.hpp"
 #include "../logger/log_reader.hpp"
 #include "../logger/logger.hpp"
+#include "../logger/stream_progress.hpp"
 #include "../logger/steady_clock_unix_time_mapper.hpp"
 #include "../master.hpp"
 #include "../ringbuffer.hpp"
@@ -131,6 +132,26 @@ TEST(LoggerTest, SteadyClockUnixTimeMapperPreservesTimestampDurations) {
     EXPECT_EQ(first_timestamp, 1'700'000'000'000'001'000ULL);
     EXPECT_EQ(second_timestamp, 1'700'000'000'000'002'500ULL);
     EXPECT_EQ(second_timestamp - first_timestamp, 1'500U);
+}
+
+TEST(LoggerTest, AnalyzeStreamProgressDetectsCatchUpAndResyncThreshold) {
+    // GIVEN: A stream that is next expected to log sequence 920
+
+    // WHEN: The latest available sequence is still within the ring buffer capacity
+    const auto safe_progress = core::logger_detail::analyze_stream_progress(920U, 1219U, 300U);
+
+    // THEN: The logger can catch up without resyncing
+    EXPECT_EQ(safe_progress.available_frames, 300U);
+    EXPECT_FALSE(safe_progress.needs_resync);
+    EXPECT_EQ(safe_progress.skipped_frames, 0U);
+
+    // WHEN: The latest available sequence has moved beyond the ring buffer capacity
+    const auto stale_progress = core::logger_detail::analyze_stream_progress(920U, 1220U, 300U);
+
+    // THEN: The logger must resync to the latest frame and report the overflow
+    EXPECT_EQ(stale_progress.available_frames, 301U);
+    EXPECT_TRUE(stale_progress.needs_resync);
+    EXPECT_EQ(stale_progress.skipped_frames, 1U);
 }
 
 TEST(LoggerTest, LoggerWritesImuSampleToMcap) {

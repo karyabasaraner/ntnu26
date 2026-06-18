@@ -252,14 +252,19 @@ void SharedDictLogger::run() {
     spdlog::info("Logger stopping");
 }
 
-bool SharedDictLogger::_get_camera_payload(DataEntry& entry, const SensorStream& stream, uint64_t timestamp_ns, std::vector<std::byte>& payload) {
+bool SharedDictLogger::_get_camera_payload(const DataEntry& entry, const SensorStream& stream, uint64_t timestamp_ns, std::vector<std::byte>& payload) {
     const size_t expected_size = stream.width * stream.height * 3;
     if (entry.data.size() < expected_size) {
         spdlog::warn("Camera {} sample too small: {} < {}", stream.name, entry.data.size(), expected_size);
         return false;
     }
 
-    cv::Mat const rgb(static_cast<int>(stream.height), static_cast<int>(stream.width), CV_8UC3, entry.data.data());
+    cv::Mat const rgb(
+        static_cast<int>(stream.height),
+        static_cast<int>(stream.width),
+        CV_8UC3,
+        const_cast<uint8_t*>(entry.data.data())
+    );
     cv::Mat bgr;
     cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
     std::vector<uint8_t> encoded;
@@ -300,6 +305,42 @@ bool SharedDictLogger::_get_imu_payload(const DataEntry& entry, uint64_t timesta
     return true;
 }
 
+bool SharedDictLogger::_write_entry(SensorStream& stream, const DataEntry& entry) {
+    std::vector<std::byte> payload;
+    const auto timestamp = _timestamp_mapper.to_unix_time_ns(entry.timestamp_ns);
+    if (stream.type == StreamType::CAMERA) {
+        if (!_get_camera_payload(entry, stream, timestamp, payload)) {
+            return false;
+        }
+
+    } else if (stream.type == StreamType::IMU) {
+        if (!_get_imu_payload(entry, timestamp, payload)) {
+            return false;
+        }
+
+    } else {
+        spdlog::warn("Unknown stream type for {}: {}", stream.name, static_cast<int>(stream.type));
+        return false;
+    }
+
+    mcap::Message msg;
+    msg.channelId = stream.channel_id;
+    msg.sequence = entry.sequence;
+    msg.publishTime = static_cast<mcap::Timestamp>(timestamp);
+    msg.logTime = static_cast<mcap::Timestamp>(timestamp);
+    msg.data = payload.data();
+    msg.dataSize = payload.size();
+
+    std::lock_guard<std::mutex> const lock(_writer_mutex);
+    const auto status = _writer.write(msg);
+    if (!status.ok()) {
+        spdlog::error("Failed to write sample for {}: {}", stream.name, status.message);
+        return false;
+    }
+
+    return true;
+}
+
 void SharedDictLogger::_process_stream(SensorStream& stream) {
     if (stream.reader == nullptr || !stream.reader->is_ready()) {
         return;
@@ -309,7 +350,6 @@ void SharedDictLogger::_process_stream(SensorStream& stream) {
     if (!stream.initialized) {
         DataEntry entry;
 
-        // TODO(MJ): latest, zero or oldest?
         stream.reader->read_latest(entry);
 
         if (entry.data.empty()) {
@@ -328,71 +368,69 @@ void SharedDictLogger::_process_stream(SensorStream& stream) {
         spdlog::info("Initializing sensor stream {}: latest head is {}", stream.name, stream.current_head);
     }
 
-    // 1. We want to write the current_head to the log file
-    // spdlog::info("Reading absolute index {}", stream.current_head);
-    DataEntry entry;
-    stream.reader->read_absolute(entry, stream.current_head);
-    if (entry.data.empty()) {
+    DataEntry latest_entry;
+    stream.reader->read_latest(latest_entry);
+    if (latest_entry.data.empty()) {
         return;
     }
 
-    // Option 1: Read sequence is behind: probably old data that will be overwritten soon, skip it
-    if (entry.sequence < stream.current_sequence) {
+    const auto progress = logger_detail::analyze_stream_progress(stream.current_sequence, latest_entry.sequence, stream.num_frames);
+    if (progress.available_frames == 0U) {
         return;
     }
 
-    if (entry.sequence > stream.current_sequence) {
-        spdlog::warn("Sequence jump for {}: expected {}, got {}", stream.name, stream.current_sequence, entry.sequence);
-        stream.current_sequence = entry.sequence;
-    }
+    if (progress.needs_resync) {
+        spdlog::warn(
+            "Stream {} lagged by {} frame(s): expected sequence {}, latest sequence {}, buffer size {}. Resyncing to latest frame.",
+            stream.name,
+            progress.skipped_frames,
+            stream.current_sequence,
+            latest_entry.sequence,
+            stream.num_frames
+        );
 
-    // spdlog::info("Entry sequence {}, stream current_sequence {}", entry.sequence, stream.current_sequence);
-
-    // 2. Write the data
-    std::vector<std::byte> payload;
-    const auto timestamp = _timestamp_mapper.to_unix_time_ns(entry.timestamp_ns);
-    if (stream.type == StreamType::CAMERA) {
-        if (!_get_camera_payload(entry, stream, timestamp, payload)) {
+        stream.current_head = latest_entry.head;
+        stream.current_sequence = latest_entry.sequence;
+        if (!_write_entry(stream, latest_entry)) {
             return;
         }
 
-    } else if (stream.type == StreamType::IMU) {
-        if (!_get_imu_payload(entry, timestamp, payload)) {
+        stream.current_head = (stream.current_head + 1) % stream.num_frames;
+        stream.current_sequence = latest_entry.sequence + 1U;
+        return;
+    }
+
+    while (stream.current_sequence <= latest_entry.sequence) {
+        DataEntry entry;
+        stream.reader->read_absolute(entry, stream.current_head);
+        if (entry.data.empty()) {
             return;
         }
 
-    } else {
-        spdlog::warn("Unknown stream type for {}: {}", stream.name, static_cast<int>(stream.type));
-        return;
-    }
+        if (entry.sequence < stream.current_sequence) {
+            return;
+        }
 
-    mcap::Message msg;
-    msg.channelId = stream.channel_id;
-    msg.sequence = entry.sequence;
-    msg.publishTime = static_cast<mcap::Timestamp>(timestamp);
-    msg.logTime = static_cast<mcap::Timestamp>(timestamp);
-    msg.data = payload.data();
-    msg.dataSize = payload.size();
+        if (entry.sequence > stream.current_sequence) {
+            spdlog::warn(
+                "Stream {} lost synchronization: expected sequence {}, got {}. Resyncing to frame {}.",
+                stream.name,
+                stream.current_sequence,
+                entry.sequence,
+                entry.head
+            );
+            stream.current_head = entry.head;
+            stream.current_sequence = entry.sequence;
+        }
 
-    std::lock_guard<std::mutex> const lock(_writer_mutex);
-    const auto status = _writer.write(msg);
-    if (!status.ok()) {
-        spdlog::error("Failed to write camera sample for {}: {}", stream.name, status.message);
-        return;
-    }
+        if (!_write_entry(stream, entry)) {
+            return;
+        }
 
-    // 3. Advance current_head, and wrap around if needed
-    stream.current_head = (stream.current_head + 1) % stream.num_frames;
-    stream.current_sequence = entry.sequence + 1;
-    // spdlog::info("Logged {} sample: head {}, sequence {}", stream.name, stream.current_head, stream.current_sequence);
-
-    // 4. Log warnings
-    if (stream.current_head == stream.num_frames - 1) {
-        const auto head_distance = (stream.current_head - entry.head + stream.num_frames) % stream.num_frames;
-        if (head_distance > stream.num_frames / 2) {
-            spdlog::warn("Stream {}: head distance {}", stream.name, head_distance);
-        } else {
-            spdlog::info("Stream {} ok: head distance {}", stream.name, head_distance);
+        stream.current_head = (stream.current_head + 1) % stream.num_frames;
+        stream.current_sequence = entry.sequence + 1U;
+        if (stream.current_sequence > latest_entry.sequence) {
+            break;
         }
     }
 }
