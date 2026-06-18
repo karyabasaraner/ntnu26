@@ -61,6 +61,20 @@ class WebCollectorHelpersTest(unittest.TestCase):
         self.assertAlmostEqual(stats["std"], 0.011180339887498949)
         self.assertEqual(stats["samples"], 4)
 
+    def test_given_weighted_rates_when_stats_are_requested_then_mean_and_std_are_sample_weighted(self):
+        # GIVEN: Two rate measurements with different sample counts
+        stats = web_collector.RunningStats()
+
+        # WHEN: The first rate covers 256 samples and the second covers 128 samples
+        stats.add(800.0, 256)
+        stats.add(1000.0, 128)
+        snapshot = stats.snapshot()
+
+        # THEN: The mean and standard deviation are weighted by sample count
+        self.assertAlmostEqual(snapshot["mean_hz"], (800.0 * 256 + 1000.0 * 128) / 384)
+        self.assertAlmostEqual(snapshot["std_hz"], 94.28090415820634)
+        self.assertEqual(snapshot["samples"], 384)
+
     def test_given_existing_logs_when_next_log_path_is_requested_then_next_counter_is_used(self):
         # GIVEN: A log directory with existing files for the same day
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -162,7 +176,7 @@ imus:
 
             with mock.patch.object(web_collector, "_ProcessHandle", _FakeProcessHandle), mock.patch.object(
                 web_collector, "_core_module", return_value=fake_core
-            ), mock.patch.object(web_collector, "_encode_jpeg_bytes", return_value=b"jpeg-bytes"):
+            ), mock.patch.object(web_collector, "_encode_jpeg_bytes", return_value=b"jpeg-bytes") as encode_jpeg_bytes:
                 state = DataCollectorState(str(config_path), temp_dir)
                 state._shared_memory_probe = _SharedMemoryProbe(["cam0", "imu0"], shm_path)
 
@@ -171,6 +185,8 @@ imus:
                 state._collect_once()
                 state._collect_once()
                 payload = state.snapshot()
+                first_frame = state.camera_frame("cam0")
+                second_frame = state.camera_frame("cam0")
 
             # THEN: Readers are created only after shared memory is ready
             self.assertTrue(payload["shared_memory_ready"])
@@ -180,33 +196,65 @@ imus:
             self.assertFalse(payload["fatal_error"])
             self.assertEqual(payload["dt"]["cameras"]["samples"], 1)
             self.assertEqual(payload["dt"]["imus"]["samples"], 1)
-            self.assertEqual(state.camera_frame("cam0"), b"jpeg-bytes")
+            self.assertIn("mean_hz", payload["dt"]["cameras"])
+            self.assertIn("mean_hz", payload["dt"]["imus"])
+            self.assertAlmostEqual(payload["cameras"][0]["rate_hz"], 100.0)
+            self.assertEqual(payload["cameras"][0]["sample_count"], 1)
+            self.assertAlmostEqual(payload["imus"][0]["rate_hz"], 100.0)
+            self.assertEqual(payload["imus"][0]["sample_count"], 1)
+            self.assertEqual(payload["imus"][0]["sample"], [1.0, 2.0, 3.0])
+            self.assertEqual(first_frame, b"jpeg-bytes")
+            self.assertEqual(second_frame, b"jpeg-bytes")
+            self.assertEqual(encode_jpeg_bytes.call_count, 1)
             self.assertNotIn("image", payload["cameras"][0])
 
-    def test_given_imu_samples_spanning_more_than_ten_seconds_when_history_is_snapshotted_then_old_samples_are_trimmed(self):
-        # GIVEN: A scripted IMU reader with timestamps that cross the 10 second window
-        reader = _ScriptedReader(
-            [
-                ("imu0", 0, 1, 1_000_000_000, np.frombuffer(struct.pack("<fff", 1.0, 2.0, 3.0), dtype=np.uint8)),
-                ("imu0", 0, 2, 5_000_000_000, np.frombuffer(struct.pack("<fff", 4.0, 5.0, 6.0), dtype=np.uint8)),
-                ("imu0", 0, 3, 11_000_000_000, np.frombuffer(struct.pack("<fff", 7.0, 8.0, 9.0), dtype=np.uint8)),
-                ("imu0", 0, 4, 12_000_000_000, np.frombuffer(struct.pack("<fff", 10.0, 11.0, 12.0), dtype=np.uint8)),
-            ]
-        )
-        state = web_collector._SensorState("imu0", "imu", reader, history_seconds=10.0)
+    def test_given_sequence_jump_when_collection_runs_then_rate_uses_sequence_delta(self):
+        # GIVEN: A controller state with a reader whose sequence and timestamp advance in a burst
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.yaml"
+            config_path.write_text(
+                """
+cameras:
+  - name: cam0
+    writer:
+      width: 1
+      height: 1
+imus:
+  - name: imu0
+""",
+                encoding="utf-8",
+            )
+            shm_path = Path(temp_dir) / DEFAULT_SHARED_MEMORY_PATH.name
+            self._write_shared_memory_image(shm_path, ["cam0", "imu0"])
 
-        # WHEN: The reader advances through the scripted samples
-        self.assertTrue(state.update())
-        self.assertTrue(state.update())
-        self.assertTrue(state.update())
-        self.assertTrue(state.update())
-        history = state.snapshot().payload["history"]
+            fake_core = _JumpingCoreModule(
+                camera_reader=_FakeReader("cam0"),
+                imu_reader=_JumpingReader(
+                    "imu0",
+                    [
+                        ("imu0", 0, 100, 1_000_000_000, np.frombuffer(struct.pack("<fff", 1.0, 2.0, 3.0), dtype=np.uint8)),
+                        ("imu0", 0, 356, 1_320_000_000, np.frombuffer(struct.pack("<fff", 4.0, 5.0, 6.0), dtype=np.uint8)),
+                    ],
+                ),
+            )
 
-        # THEN: Only the last ten seconds of samples remain in the ring buffer
-        self.assertEqual(len(history), 3)
-        self.assertEqual([entry["timestamp_ns"] for entry in history], [5_000_000_000, 11_000_000_000, 12_000_000_000])
-        self.assertEqual([entry["dt_s"] for entry in history], [4.0, 6.0, 1.0])
-        self.assertEqual([entry["sample"] for entry in history], [[4.0, 5.0, 6.0], [7.0, 8.0, 9.0], [10.0, 11.0, 12.0]])
+            with mock.patch.object(web_collector, "_ProcessHandle", _FakeProcessHandle), mock.patch.object(
+                web_collector, "_core_module", return_value=fake_core
+            ):
+                state = DataCollectorState(str(config_path), temp_dir)
+                state._shared_memory_probe = _SharedMemoryProbe(["cam0", "imu0"], shm_path)
+                state.start_main_app(str(config_path))
+                state._collect_once()
+                state._collect_once()
+                payload = state.snapshot()
+
+        # THEN: The rate summary reflects the 256-sample burst between entries
+        self.assertEqual(payload["imus"][0]["sequence"], 356)
+        self.assertAlmostEqual(payload["imus"][0]["rate_hz"], 800.0)
+        self.assertEqual(payload["imus"][0]["sample_count"], 256)
+        self.assertAlmostEqual(payload["dt"]["imus"]["mean_hz"], 800.0)
+        self.assertAlmostEqual(payload["dt"]["imus"]["rate_hz"], 800.0)
+        self.assertEqual(payload["dt"]["imus"]["samples"], 256)
 
     def test_given_main_app_exits_before_shared_memory_is_ready_then_fatal_error_is_reported(self):
         # GIVEN: A controller state using fake processes and no ready shared memory
@@ -327,8 +375,24 @@ class _FakeCoreModule:
         return _FakeReader(name)
 
 
-class _ScriptedReader:
-    def __init__(self, entries):
+class _JumpingCoreModule:
+    def __init__(self, camera_reader, imu_reader):
+        self._camera_reader = camera_reader
+        self._imu_reader = imu_reader
+        self.calls: list[tuple[str, str]] = []
+
+    def make_reader(self, config_path: str, name: str):
+        self.calls.append((config_path, name))
+        if name == "cam0":
+            return self._camera_reader
+        if name == "imu0":
+            return self._imu_reader
+        return None
+
+
+class _JumpingReader:
+    def __init__(self, name: str, entries):
+        self._name = name
         self._entries = list(entries)
         self._index = 0
 

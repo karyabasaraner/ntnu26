@@ -13,7 +13,6 @@ import subprocess
 import sys
 import threading
 import time
-from collections import deque
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,7 +27,6 @@ DEFAULT_CONFIG_PATH = "configs/four-cameras.yaml"
 DEFAULT_LOG_DIR = "/mnt/storage"
 DEFAULT_HOST = "10.147.17.18"
 DEFAULT_PORT = 8000
-DEFAULT_IMU_HISTORY_SECONDS = 10.0
 DEFAULT_SHARED_MEMORY_PATH = Path("/dev/shm/shared_dict")
 
 _LOG_FILENAME_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-(?P<counter>\d{3,})\.mcap$")
@@ -61,22 +59,35 @@ class RunningStats:
         self.mean = 0.0
         self.m2 = 0.0
 
-    def add(self, value: float) -> None:
-        self.count += 1
+    def add(self, value: float, weight: int = 1) -> None:
+        if weight <= 0:
+            return
+
+        weighted_count = self.count + weight
         delta = value - self.mean
-        self.mean += delta / self.count
+        self.mean += (delta * weight) / weighted_count
         delta2 = value - self.mean
-        self.m2 += delta * delta2
+        self.m2 += delta * delta2 * weight
+        self.count = weighted_count
 
     def snapshot(self) -> dict[str, float | int]:
         if self.count == 0:
-            return {"mean": 0.0, "std": 0.0, "samples": 0, "rate_hz": 0.0}
+            return {
+                "mean": 0.0,
+                "std": 0.0,
+                "mean_hz": 0.0,
+                "std_hz": 0.0,
+                "samples": 0,
+                "rate_hz": 0.0,
+            }
 
         variance = self.m2 / self.count
-        rate_hz = 1.0 / self.mean if self.mean > 0.0 else 0.0
+        rate_hz = self.mean
         return {
             "mean": self.mean,
             "std": math.sqrt(max(0.0, variance)),
+            "mean_hz": self.mean,
+            "std_hz": math.sqrt(max(0.0, variance)),
             "samples": self.count,
             "rate_hz": rate_hz,
         }
@@ -167,11 +178,34 @@ def _reshape_camera_frame(array: Any, width: int, height: int) -> np.ndarray:
 
 
 def _decode_imu_sample(array: Any) -> list[float]:
-    raw = np.asarray(array, dtype=np.uint8).tobytes()
+    if isinstance(array, (bytes, bytearray, memoryview)):
+        raw = bytes(array)
+    else:
+        raw = np.asarray(array, dtype=np.uint8).tobytes()
     values = np.frombuffer(raw, dtype=np.float32, count=3)
     if values.size != 3:
         raise ValueError("IMU sample does not contain three float32 values")
     return [float(values[0]), float(values[1]), float(values[2])]
+
+
+def _sequence_rate_hz(
+    previous_sequence: int | None,
+    previous_timestamp_ns: int | None,
+    current_sequence: int,
+    current_timestamp_ns: int,
+) -> tuple[float | None, int, float | None]:
+    if previous_sequence is None or previous_timestamp_ns is None:
+        return None, 0, None
+
+    sequence_delta = current_sequence - previous_sequence
+    timestamp_delta_ns = current_timestamp_ns - previous_timestamp_ns
+    if sequence_delta <= 0 or timestamp_delta_ns <= 0:
+        return None, 0, None
+
+    interval_s = timestamp_delta_ns / 1_000_000_000.0
+    sample_dt_s = interval_s / float(sequence_delta)
+    rate_hz = 1.0 / sample_dt_s if sample_dt_s > 0.0 else None
+    return rate_hz, sequence_delta, sample_dt_s
 
 
 class _SharedMemoryDataFrameHeader(ctypes.Structure):
@@ -267,101 +301,161 @@ class _SensorState:
         reader: Any,
         width: int | None = None,
         height: int | None = None,
-        history_seconds: float = DEFAULT_IMU_HISTORY_SECONDS,
     ):
         self._name = name
         self._kind = kind
         self._reader = reader
         self._width = width
         self._height = height
-        self._history_window_ns = int(history_seconds * 1_000_000_000.0)
+        self._lock = threading.Lock()
         self._last_timestamp_ns: int | None = None
         self._last_sequence: int | None = None
         self._last_dt_s: float | None = None
+        self._last_sample_count: int | None = None
+        self._last_rate_hz: float | None = None
         self._last_ready = False
         self._last_payload: dict[str, Any] = {}
-        self._imu_history: deque[dict[str, Any]] = deque()
 
     @property
     def dt_s(self) -> float | None:
-        return self._last_dt_s
+        with self._lock:
+            return self._last_dt_s
+
+    @property
+    def sample_count(self) -> int | None:
+        with self._lock:
+            return self._last_sample_count
+
+    @property
+    def rate_hz(self) -> float | None:
+        with self._lock:
+            return self._last_rate_hz
 
     @property
     def ready(self) -> bool:
-        return self._reader is not None and self._last_ready
+        with self._lock:
+            return self._reader is not None and self._last_ready
 
     def attach_reader(self, reader: Any) -> None:
-        self._reader = reader
+        with self._lock:
+            self._reader = reader
 
     def reset(self) -> None:
-        self._reader = None
-        self._last_timestamp_ns = None
-        self._last_sequence = None
-        self._last_dt_s = None
-        self._last_ready = False
-        self._last_payload = {}
-        self._imu_history.clear()
-
-    def _trim_imu_history(self, current_timestamp_ns: int) -> None:
-        cutoff_timestamp_ns = current_timestamp_ns - self._history_window_ns
-        while self._imu_history and self._imu_history[0]["timestamp_ns"] < cutoff_timestamp_ns:
-            self._imu_history.popleft()
+        with self._lock:
+            self._reader = None
+            self._last_timestamp_ns = None
+            self._last_sequence = None
+            self._last_dt_s = None
+            self._last_sample_count = None
+            self._last_rate_hz = None
+            self._last_ready = False
+            self._last_payload = {}
 
     def update(self) -> bool:
-        if self._reader is None:
-            return False
+        with self._lock:
+            reader = self._reader
+            if reader is None:
+                return False
 
-        key, head, sequence, timestamp_ns, array = self._reader.read()
+        key, head, sequence, timestamp_ns, array = reader.read()
         if not key or getattr(array, "size", 0) == 0:
             return False
 
         current_timestamp_ns = int(timestamp_ns)
         current_sequence = int(sequence)
-        if self._last_sequence is not None and current_sequence == self._last_sequence:
-            return False
 
-        dt_s = None
-        if self._last_timestamp_ns is not None and current_timestamp_ns > self._last_timestamp_ns:
-            dt_s = (current_timestamp_ns - self._last_timestamp_ns) / 1_000_000_000.0
+        with self._lock:
+            if self._last_sequence is None or self._last_timestamp_ns is None:
+                rate_hz = None
+                sample_count = None
+                dt_s = None
+            else:
+                rate_hz, sample_count, dt_s = _sequence_rate_hz(
+                    self._last_sequence,
+                    self._last_timestamp_ns,
+                    current_sequence,
+                    current_timestamp_ns,
+                )
 
-        if self._kind == "camera":
-            frame = _reshape_camera_frame(array, self._width or 0, self._height or 0)
-            payload = {
-                "frame_bytes": _encode_jpeg_bytes(frame),
-                "head": int(head),
-            }
-        else:
-            sample = _decode_imu_sample(array)
-            history_entry = {
-                "timestamp_ns": current_timestamp_ns,
-                "dt_s": dt_s,
-                "sample": sample,
-                "head": int(head),
-            }
-            self._imu_history.append(history_entry)
-            self._trim_imu_history(current_timestamp_ns)
-            payload = {
-                "sample": sample,
-                "history": list(self._imu_history),
-                "head": int(head),
-            }
+                if current_sequence == self._last_sequence:
+                    return False
 
-        self._last_timestamp_ns = current_timestamp_ns
-        self._last_sequence = current_sequence
-        self._last_dt_s = dt_s if dt_s is not None else self._last_dt_s
-        self._last_ready = True
-        self._last_payload = payload
-        return True
+                if rate_hz is None or sample_count == 0 or dt_s is None:
+                    if current_sequence < self._last_sequence or current_timestamp_ns <= self._last_timestamp_ns:
+                        self._last_timestamp_ns = current_timestamp_ns
+                        self._last_sequence = current_sequence
+                        self._last_dt_s = None
+                        self._last_sample_count = None
+                        self._last_rate_hz = None
+                        self._last_ready = True
+                    return False
+
+            if self._kind == "camera":
+                payload = {
+                    "frame": array,
+                    "head": int(head),
+                }
+            else:
+                sample = _decode_imu_sample(array)
+                payload = {
+                    "sample": sample,
+                    "head": int(head),
+                }
+
+            payload["rate_hz"] = rate_hz
+            payload["sample_count"] = sample_count
+            payload["dt_s"] = dt_s
+
+            self._last_timestamp_ns = current_timestamp_ns
+            self._last_sequence = current_sequence
+            self._last_dt_s = dt_s
+            self._last_sample_count = sample_count
+            self._last_rate_hz = rate_hz
+            self._last_ready = True
+            self._last_payload = payload
+            return True
+
+    def camera_frame_bytes(self) -> bytes | None:
+        if self._kind != "camera":
+            return None
+
+        with self._lock:
+            if not self._last_ready:
+                return None
+
+            sequence = self._last_sequence
+            cached_sequence = self._last_payload.get("encoded_sequence")
+            cached_bytes = self._last_payload.get("encoded_frame_bytes")
+            frame = self._last_payload.get("frame")
+            width = self._width
+            height = self._height
+
+        if sequence is None or frame is None or width is None or height is None:
+            return None
+
+        if cached_sequence == sequence and cached_bytes is not None:
+            return cached_bytes
+
+        image = _reshape_camera_frame(frame, width, height)
+        encoded_bytes = _encode_jpeg_bytes(image)
+
+        with self._lock:
+            if self._last_sequence == sequence and self._last_payload.get("frame") is frame:
+                self._last_payload["encoded_sequence"] = sequence
+                self._last_payload["encoded_frame_bytes"] = encoded_bytes
+
+        return encoded_bytes
 
     def snapshot(self) -> StreamSnapshot:
-        return StreamSnapshot(
-            self._name,
-            self._last_ready,
-            self._last_timestamp_ns,
-            self._last_sequence,
-            self._last_dt_s,
-            self._last_payload,
-        )
+        with self._lock:
+            return StreamSnapshot(
+                self._name,
+                self._last_ready,
+                self._last_timestamp_ns,
+                self._last_sequence,
+                self._last_dt_s,
+                self._last_payload,
+            )
 
 
 class _ProcessHandle:
@@ -412,8 +506,8 @@ class DataCollectorState:
         self._readers_initialized = False
         self._main_app_started = False
         self._fatal_error: str | None = None
-        self._camera_dt_stats = RunningStats()
-        self._imu_dt_stats = RunningStats()
+        self._camera_rate_stats = RunningStats()
+        self._imu_rate_stats = RunningStats()
         self._main_process = _ProcessHandle([str(_core_binary_path()), config_path])
         self._logger_process = _ProcessHandle([str(_logger_binary_path()), config_path, str(next_log_path(Path(log_dir)))])
         self._current_log_path: Path | None = None
@@ -452,8 +546,8 @@ class DataCollectorState:
 
     def _reset_runtime_state(self) -> None:
         self._readers_initialized = False
-        self._camera_dt_stats.reset()
-        self._imu_dt_stats.reset()
+        self._camera_rate_stats.reset()
+        self._imu_rate_stats.reset()
         for state in self._camera_states:
             state.reset()
         for state in self._imu_states:
@@ -483,12 +577,18 @@ class DataCollectorState:
                 return
 
             for state in self._camera_states:
-                if state.update() and state.dt_s is not None:
-                    self._camera_dt_stats.add(state.dt_s)
+                if state.update():
+                    rate_hz = state.rate_hz
+                    sample_count = state.sample_count
+                    if rate_hz is not None and sample_count is not None:
+                        self._camera_rate_stats.add(rate_hz, sample_count)
 
             for state in self._imu_states:
-                if state.update() and state.dt_s is not None:
-                    self._imu_dt_stats.add(state.dt_s)
+                if state.update():
+                    rate_hz = state.rate_hz
+                    sample_count = state.sample_count
+                    if rate_hz is not None and sample_count is not None:
+                        self._imu_rate_stats.add(rate_hz, sample_count)
 
     def _refresh_layout_if_needed(self, config_path: str) -> None:
         if config_path != self._config_path:
@@ -604,6 +704,8 @@ class DataCollectorState:
                     "timestamp_ns": snapshot.timestamp_ns,
                     "sequence": snapshot.sequence,
                     "dt_s": snapshot.dt_s,
+                    "rate_hz": snapshot.payload.get("rate_hz"),
+                    "sample_count": snapshot.payload.get("sample_count"),
                 }
             )
 
@@ -620,8 +722,9 @@ class DataCollectorState:
                     "timestamp_ns": snapshot.timestamp_ns,
                     "sequence": snapshot.sequence,
                     "dt_s": snapshot.dt_s,
+                    "rate_hz": snapshot.payload.get("rate_hz"),
+                    "sample_count": snapshot.payload.get("sample_count"),
                     "sample": snapshot.payload.get("sample"),
-                    "history": snapshot.payload.get("history", []),
                 }
             )
 
@@ -646,16 +749,15 @@ class DataCollectorState:
             }
 
     def camera_frame(self, name: str) -> bytes | None:
+        target_state: _SensorState | None = None
         with self._lock:
             for state in self._camera_states:
-                if state._name != name:
-                    continue
-                snapshot = state.snapshot()
-                frame_bytes = snapshot.payload.get("frame_bytes")
-                if frame_bytes is None:
-                    return None
-                return frame_bytes
-        return None
+                if state._name == name:
+                    target_state = state
+                    break
+        if target_state is None:
+            return None
+        return target_state.camera_frame_bytes()
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -683,8 +785,8 @@ class DataCollectorState:
                 "cameras": self._camera_snapshot(),
                 "imus": self._imu_snapshot(),
                 "dt": {
-                    "cameras": self._camera_dt_stats.snapshot(),
-                    "imus": self._imu_dt_stats.snapshot(),
+                    "cameras": self._camera_rate_stats.snapshot(),
+                    "imus": self._imu_rate_stats.snapshot(),
                 },
             }
 
@@ -771,7 +873,7 @@ WEB_HTML = """<!doctype html>
     }
     .band h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0; color: var(--muted); }
     .camera-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-    .camera-card, .imu-card, .plot-card {
+    .camera-card, .plot-card {
       border: 1px solid var(--line);
       background: var(--surface);
       min-width: 0;
@@ -784,13 +886,6 @@ WEB_HTML = """<!doctype html>
       background: #05070a;
     }
     .card-caption { padding: 6px 8px; border-top: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .imu-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
-    .imu-card canvas, .plot-card canvas {
-      display: block;
-      width: 100%;
-      height: 180px;
-      background: #05070a;
-    }
     .plot-card canvas { height: 140px; }
     .plot-meta {
       display: flex;
@@ -807,8 +902,17 @@ WEB_HTML = """<!doctype html>
       padding: 10px;
     }
     .summary-box strong { color: var(--text); }
-    .summary-box .label { color: var(--muted); display: block; margin-bottom: 4px; }
-    .summary-box canvas { display: block; width: 100%; height: 120px; margin-top: 8px; background: #05070a; }
+    .summary-box .label { color: var(--muted); display: block; margin-bottom: 6px; }
+    .summary-list { display: grid; gap: 4px; }
+    .summary-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: space-between;
+      align-items: baseline;
+      color: var(--muted);
+    }
+    .summary-line strong { color: var(--text); font-weight: 600; }
     .muted { color: var(--muted); }
     .good { color: var(--good); }
     .bad { color: var(--bad); }
@@ -858,20 +962,15 @@ WEB_HTML = """<!doctype html>
     </section>
 
     <section class="band">
-      <h2>IMU Readings</h2>
-      <div id="imu-grid" class="imu-grid"></div>
-    </section>
-
-    <section class="band">
       <h2>Dt Summary</h2>
       <div class="summary-grid">
         <div class="summary-box">
           <span class="label">Cameras</span>
-          <div><strong id="camera-dt-text">-</strong></div>
+          <div id="camera-summary" class="summary-list"></div>
         </div>
         <div class="summary-box">
           <span class="label">IMUs</span>
-          <div><strong id="imu-dt-text">-</strong></div>
+          <div id="imu-summary" class="summary-list"></div>
         </div>
       </div>
     </section>
@@ -890,13 +989,51 @@ WEB_HTML = """<!doctype html>
     const currentLogDirElement = document.getElementById('current-log-dir');
     const fatalErrorElement = document.getElementById('fatal-error');
     const cameraGrid = document.getElementById('camera-grid');
-    const imuGrid = document.getElementById('imu-grid');
-    const cameraDtText = document.getElementById('camera-dt-text');
-    const imuDtText = document.getElementById('imu-dt-text');
-    const imuWindowSeconds = 10;
+    const cameraSummary = document.getElementById('camera-summary');
+    const imuSummary = document.getElementById('imu-summary');
     let cameraCards = new Map();
-    let imuCards = new Map();
-    let cameraRefreshInFlight = false;
+    let deviceSummaries = {
+      cameras: new Map(),
+      imus: new Map(),
+    };
+
+    class WeightedStats {
+      constructor() {
+        this.count = 0;
+        this.mean = 0;
+        this.m2 = 0;
+      }
+
+      reset() {
+        this.count = 0;
+        this.mean = 0;
+        this.m2 = 0;
+      }
+
+      add(value, weight = 1) {
+        if (!Number.isFinite(value) || !Number.isFinite(weight) || weight <= 0) {
+          return;
+        }
+
+        const weightedCount = this.count + weight;
+        const delta = value - this.mean;
+        this.mean += (delta * weight) / weightedCount;
+        const delta2 = value - this.mean;
+        this.m2 += delta * delta2 * weight;
+        this.count = weightedCount;
+      }
+
+      snapshot() {
+        if (this.count <= 0) {
+          return { mean: 0, std: 0, samples: 0 };
+        }
+        return {
+          mean: this.mean,
+          std: Math.sqrt(Math.max(0, this.m2 / this.count)),
+          samples: this.count,
+        };
+      }
+    }
 
     function ensureCameraCards(cameras) {
       const names = cameras.map((camera) => camera.name).join('|');
@@ -926,28 +1063,10 @@ WEB_HTML = """<!doctype html>
           objectUrl: null,
           endpoint: `/api/camera_frame?name=${encodeURIComponent(camera.name)}`,
           ready: false,
+          latestSequence: null,
+          renderedSequence: null,
+          inFlight: false,
         });
-      }
-    }
-
-    function ensureImuCards(imus) {
-      const names = imus.map((imu) => imu.name).join('|');
-      if (imuGrid.dataset.names === names) {
-        return;
-      }
-      imuGrid.dataset.names = names;
-      imuGrid.innerHTML = '';
-      imuCards = new Map();
-      for (const imu of imus) {
-        const card = document.createElement('div');
-        card.className = 'imu-card';
-        const canvas = document.createElement('canvas');
-        const caption = document.createElement('div');
-        caption.className = 'card-caption';
-        caption.textContent = imu.name;
-        card.append(canvas, caption);
-        imuGrid.append(card);
-        imuCards.set(imu.name, { canvas, caption });
       }
     }
 
@@ -955,86 +1074,88 @@ WEB_HTML = """<!doctype html>
       return Number.isFinite(value) ? value.toFixed(4) : '-';
     }
 
-    function formatRate(value) {
-      return Number.isFinite(value) ? value.toFixed(1) : '-';
+    function formatSequenceList(streams) {
+      if (!Array.isArray(streams) || streams.length === 0) {
+        return '-';
+      }
+      return streams
+        .map((stream) => `${stream.name}=${stream.sequence ?? '-'}`)
+        .join(', ');
     }
 
-    function resizeCanvas(canvas) {
-      const ratio = window.devicePixelRatio || 1;
-      const width = Math.max(1, canvas.clientWidth);
-      const height = Math.max(1, canvas.clientHeight);
-      const nextWidth = Math.floor(width * ratio);
-      const nextHeight = Math.floor(height * ratio);
-      if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
-        canvas.width = nextWidth;
-        canvas.height = nextHeight;
+    function ensureSummaryEntries(groupName, streams) {
+      const summaries = deviceSummaries[groupName];
+      const names = new Set(streams.map((stream) => stream.name));
+      for (const name of Array.from(summaries.keys())) {
+        if (!names.has(name)) {
+          summaries.delete(name);
+        }
       }
-      const context = canvas.getContext('2d');
-      context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      return { context, width, height };
+      for (const stream of streams) {
+        if (!summaries.has(stream.name)) {
+          summaries.set(stream.name, {
+            stats: new WeightedStats(),
+            lastSequence: null,
+            sequence: null,
+            rateHz: null,
+            sampleCount: null,
+          });
+        }
+      }
     }
 
-    function drawPlot(canvas, history, colors, labels, windowSeconds) {
-      const { context, width, height } = resizeCanvas(canvas);
-      context.clearRect(0, 0, width, height);
-      context.fillStyle = '#05070a';
-      context.fillRect(0, 0, width, height);
-      context.strokeStyle = '#223041';
-      context.lineWidth = 1;
-      for (let line = 1; line < 4; ++line) {
-        const y = (height * line) / 4;
-        context.beginPath();
-        context.moveTo(0, y);
-        context.lineTo(width, y);
-        context.stroke();
+    function updateSummaryState(groupName, streams) {
+      ensureSummaryEntries(groupName, streams);
+      const summaries = deviceSummaries[groupName];
+      for (const stream of streams) {
+        const summary = summaries.get(stream.name);
+        if (!summary) {
+          continue;
+        }
+
+        if (summary.sequence !== null && stream.sequence !== null && stream.sequence < summary.sequence) {
+          summary.stats.reset();
+          summary.lastSequence = null;
+        }
+
+        if (stream.sequence !== null && stream.sequence !== summary.lastSequence) {
+          if (Number.isFinite(stream.rate_hz) && Number.isFinite(stream.sample_count)) {
+            summary.stats.add(stream.rate_hz, stream.sample_count);
+          }
+          summary.lastSequence = stream.sequence;
+        }
+
+        summary.sequence = stream.sequence;
+        summary.rateHz = stream.rate_hz;
+        summary.sampleCount = stream.sample_count;
       }
+    }
 
-      const points = history
-        .filter((entry) => entry && Array.isArray(entry.sample) && entry.sample.length >= 3 && Number.isFinite(entry.timestamp_ns))
-        .map((entry) => ({
-          timestampNs: Number(entry.timestamp_ns),
-          sample: [Number(entry.sample[0]), Number(entry.sample[1]), Number(entry.sample[2])],
-        }));
-
-      const values = points.flatMap((entry) => entry.sample).filter((value) => Number.isFinite(value));
-      if (!values.length) {
+    function renderSummaryList(container, streams, groupName) {
+      container.innerHTML = '';
+      if (!Array.isArray(streams) || streams.length === 0) {
+        container.textContent = '-';
         return;
       }
-      const minimum = Math.min(...values);
-      const maximum = Math.max(...values);
-      const span = Math.max(1e-6, maximum - minimum);
-      const padding = span * 0.1;
-      const lower = minimum - padding;
-      const upper = maximum + padding;
-      const latestTimestampNs = points[points.length - 1].timestampNs;
-      const windowNs = windowSeconds * 1_000_000_000;
-      const startTimestampNs = latestTimestampNs - windowNs;
-      const xValues = points.map((entry) => ((entry.timestampNs - startTimestampNs) / windowNs) * width);
 
-      [0, 1, 2].forEach((axisIndex) => {
-        if (!points.length) {
-          return;
-        }
-        context.strokeStyle = colors[axisIndex];
-        context.lineWidth = 1.5;
-        context.beginPath();
-        points.forEach((entry, sampleIndex) => {
-          const x = xValues[sampleIndex];
-          const y = height - ((entry.sample[axisIndex] - lower) / (upper - lower)) * height;
-          if (sampleIndex === 0) {
-            context.moveTo(x, y);
-          } else {
-            context.lineTo(x, y);
-          }
-        });
-        context.stroke();
-      });
+      const summaries = deviceSummaries[groupName];
+      for (const stream of streams) {
+        const summary = summaries.get(stream.name);
+        const stats = summary ? summary.stats.snapshot() : { mean: 0, std: 0 };
+        const line = document.createElement('div');
+        line.className = 'summary-line';
 
-      context.fillStyle = '#9aa4b2';
-      context.font = '12px system-ui, sans-serif';
-      labels.forEach((label, index) => {
-        context.fillText(label, 8, 16 + index * 14);
-      });
+        const name = document.createElement('strong');
+        name.textContent = stream.name;
+
+        const details = document.createElement('span');
+        const meanText = summary && summary.stats.count > 0 ? `${formatNumber(stats.mean)} Hz` : '-';
+        const stdText = summary && summary.stats.count > 0 ? `${formatNumber(stats.std)} Hz` : '-';
+        details.textContent = `mean ${meanText}, std ${stdText}, seq ${stream.sequence ?? '-'}`;
+
+        line.append(name, details);
+        container.append(line);
+      }
     }
 
     async function postJson(path, body) {
@@ -1070,25 +1191,19 @@ WEB_HTML = """<!doctype html>
       }
       logStateElement.textContent = payload.logging.running ? 'running' : 'stopped';
       logStateElement.className = payload.logging.running ? 'good' : 'bad';
-      cameraDtText.textContent = `mean ${formatNumber(payload.dt.cameras.mean)} s, std ${formatNumber(payload.dt.cameras.std)} s, rate ${formatRate(payload.dt.cameras.rate_hz)} Hz, samples ${payload.dt.cameras.samples}`;
-      imuDtText.textContent = `mean ${formatNumber(payload.dt.imus.mean)} s, std ${formatNumber(payload.dt.imus.std)} s, rate ${formatRate(payload.dt.imus.rate_hz)} Hz, samples ${payload.dt.imus.samples}`;
+      updateSummaryState('cameras', payload.cameras);
+      updateSummaryState('imus', payload.imus);
+      renderSummaryList(cameraSummary, payload.cameras, 'cameras');
+      renderSummaryList(imuSummary, payload.imus, 'imus');
 
       ensureCameraCards(payload.cameras);
-      ensureImuCards(payload.imus);
 
       for (const camera of payload.cameras) {
         const card = cameraCards.get(camera.name);
         if (card) {
           card.ready = camera.ready;
+          card.latestSequence = camera.sequence;
           card.caption.textContent = `${camera.name} ${camera.ready ? '' : '(waiting)'}`.trim();
-        }
-      }
-
-      for (const imu of payload.imus) {
-        const card = imuCards.get(imu.name);
-        if (card) {
-          drawPlot(card.canvas, imu.history, ['#ff6b6b', '#3ddc97', '#4fb3ff'], ['x', 'y', 'z'], imuWindowSeconds);
-          card.caption.textContent = `${imu.name} ${imu.ready ? '' : '(waiting)'}`.trim();
         }
       }
 
@@ -1099,37 +1214,40 @@ WEB_HTML = """<!doctype html>
     }
 
     async function refreshCameraFrames() {
-      if (cameraRefreshInFlight || cameraCards.size === 0) {
-        return;
-      }
-
-      cameraRefreshInFlight = true;
       try {
         await Promise.all(Array.from(cameraCards.entries(), async ([name, card]) => {
-          if (!card.ready) {
-            return;
-          }
-          const response = await fetch(card.endpoint, { cache: 'no-store' });
-          if (!response.ok || response.status === 204) {
+          if (!card.ready || card.inFlight || card.latestSequence === null || card.latestSequence === card.renderedSequence) {
             return;
           }
 
-          const blob = await response.blob();
-          if (blob.size === 0) {
-            return;
-          }
+          card.inFlight = true;
+          const requestedSequence = card.latestSequence;
+          try {
+            const response = await fetch(card.endpoint, { cache: 'no-store' });
+            if (!response.ok || response.status === 204) {
+              return;
+            }
 
-          const nextUrl = URL.createObjectURL(blob);
-          if (card.objectUrl) {
-            URL.revokeObjectURL(card.objectUrl);
+            const blob = await response.blob();
+            if (blob.size === 0) {
+              return;
+            }
+
+            const nextUrl = URL.createObjectURL(blob);
+            if (card.objectUrl) {
+              URL.revokeObjectURL(card.objectUrl);
+            }
+            card.objectUrl = nextUrl;
+            card.image.src = nextUrl;
+            if (card.latestSequence === requestedSequence) {
+              card.renderedSequence = requestedSequence;
+            }
+          } finally {
+            card.inFlight = false;
           }
-          card.objectUrl = nextUrl;
-          card.image.src = nextUrl;
         }));
       } catch (error) {
         void error;
-      } finally {
-        cameraRefreshInFlight = false;
       }
     }
 
@@ -1177,8 +1295,8 @@ WEB_HTML = """<!doctype html>
 
     async function run() {
       await refreshState();
-      setInterval(() => { refreshState().catch(() => {}); }, 250);
-      setInterval(() => { refreshCameraFrames().catch(() => {}); }, 50);
+      setInterval(() => { refreshState().catch(() => {}); }, 100);
+      setInterval(() => { refreshCameraFrames().catch(() => {}); }, 33);
     }
 
     run().catch((error) => {

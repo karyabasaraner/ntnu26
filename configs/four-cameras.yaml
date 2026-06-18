@@ -22,7 +22,7 @@ cameras:
         value: 1 # Manual Mode
         id: 0x009a0901
       - name: exposure_time_absolute
-        value: 8
+        value: 15
         id: 0x009a0902
     format: UYVY
     req_buffer_count: 4
@@ -49,7 +49,7 @@ cameras:
         value: 1 # Manual Mode
         id: 0x009a0901
       - name: exposure_time_absolute
-        value: 8
+        value: 15
         id: 0x009a0902
     format: UYVY
     req_buffer_count: 4
@@ -76,7 +76,7 @@ cameras:
         value: 1 # Manual Mode
         id: 0x009a0901
       - name: exposure_time_absolute
-        value: 8
+        value: 15
         id: 0x009a0902
     format: UYVY
     req_buffer_count: 1
@@ -103,14 +103,14 @@ cameras:
         value: 1 # Manual Mode
         id: 0x009a0901
       - name: exposure_time_absolute
-        value: 8
+        value: 15
         id: 0x009a0902
     format: UYVY
     req_buffer_count: 1
 imus:
   - name: accelerometer
     device: "iio:device0"
-    sampling_frequency: 800 # Hz
+    sampling_frequency: 400 # Hz
     scale: 0.000897
     buffer_samples: 256
     watermark_samples: 256
@@ -120,7 +120,7 @@ imus:
       - "accel_z"
   - name: gyroscope
     device: "iio:device1"
-    sampling_frequency: 1000 # Hz
+    sampling_frequency: 400 # Hz
     scale: 0.001065
     buffer_samples: 256
     watermark_samples: 256
@@ -143,7 +143,7 @@ shared_memory:
     num_frames: 300 # 10 seconds at 30 fps
   - name: accelerometer
     size_per_frame: 12 # 3 channel * 4 bytes/channels
-    num_frames: 8000 # 10 seconds at 800 Hz
+    num_frames: 4000 # 10 seconds at 400 Hz
   - name: gyroscope
     size_per_frame: 12 # 3 channel * 4 bytes/channels
-    num_frames: 10000 # 10 seconds at 1000 Hz
+    num_frames: 4000 # 10 seconds at 400 Hz
