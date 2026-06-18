@@ -147,10 +147,10 @@ std::string base64_encode(const std::vector<std::byte>& bytes) {
         const auto octet_c = index + 2U < bytes.size() ? static_cast<uint32_t>(std::to_integer<uint8_t>(bytes.at(index + 2U))) : 0U;
         const auto triple = (octet_a << 16U) | (octet_b << 8U) | octet_c;
 
-        encoded.push_back(kBase64Alphabet.at((triple >> 18U) & 0x3FU));
-        encoded.push_back(kBase64Alphabet.at((triple >> 12U) & 0x3FU));
-        encoded.push_back(index + 1U < bytes.size() ? kBase64Alphabet.at((triple >> 6U) & 0x3FU) : '=');
-        encoded.push_back(index + 2U < bytes.size() ? kBase64Alphabet.at(triple & 0x3FU) : '=');
+        encoded.push_back(kBase64Alphabet[(triple >> 18U) & 0x3FU]);
+        encoded.push_back(kBase64Alphabet[(triple >> 12U) & 0x3FU]);
+        encoded.push_back(index + 1U < bytes.size() ? kBase64Alphabet[(triple >> 6U) & 0x3FU] : '=');
+        encoded.push_back(index + 2U < bytes.size() ? kBase64Alphabet[triple & 0x3FU] : '=');
     }
 
     return encoded;

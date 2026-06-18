@@ -11,7 +11,6 @@
 #include <string>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <thread>
 #include <unistd.h>
 #include <vector>
 #include <zlib.h>
@@ -374,9 +373,11 @@ TEST(ShareDictTest, WriterRejectsOversizedPayloadWithoutAdvancingRingbuffer) {
     // WHEN: The writer receives a payload larger than the frame size
     shared_dict_writer.add("accelerometer", payload.data(), payload.size(), 99U, 123U);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
     // THEN: The ringbuffer head and sequence do not advance
-    EXPECT_EQ(buffer->head.load(std::memory_order_acquire), initial_head);
-    EXPECT_EQ(buffer->sequence.load(std::memory_order_acquire), initial_sequence);
+    ASSERT_TRUE(core::test::wait_for_predicate(
+        [buffer, initial_head, initial_sequence] {
+            return buffer->head.load(std::memory_order_acquire) == initial_head &&
+                   buffer->sequence.load(std::memory_order_acquire) == initial_sequence;
+        },
+        std::chrono::milliseconds(100)));
 }

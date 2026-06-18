@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 
+#include "../../../tests/test_async_helpers.hpp"
 #include "../client/client.hpp"
 #include "../client/writer.hpp"
 #include "../logger/log_reader.hpp"
 #include "../logger/logger.hpp"
 #include "../logger/steady_clock_unix_time_mapper.hpp"
 #include "../master.hpp"
-#include "../../../tests/test_async_helpers.hpp"
 #include "../ringbuffer.hpp"
 #include "configs.hpp"
 
