@@ -1,5 +1,6 @@
 #include "camera.hpp"
 
+#include "../shared_memory/utils.hpp"
 #include "../utils/configs.hpp"
 
 #include <algorithm>
@@ -24,6 +25,47 @@
 #include <utility>
 
 namespace core {
+namespace {
+
+uint64_t steady_clock_now_ns() {
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()
+    );
+}
+
+uint64_t v4l2_timestamp_to_ns(const v4l2_buffer& buffer) {
+    constexpr uint64_t kNanosecondsPerSecond = 1'000'000'000ULL;
+    constexpr uint64_t kNanosecondsPerMicrosecond = 1'000ULL;
+    return (static_cast<uint64_t>(buffer.timestamp.tv_sec) * kNanosecondsPerSecond) +
+           (static_cast<uint64_t>(buffer.timestamp.tv_usec) * kNanosecondsPerMicrosecond);
+}
+
+bool has_monotonic_v4l2_timestamp(const v4l2_buffer& buffer) {
+#ifdef V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
+    return (buffer.flags & V4L2_BUF_FLAG_TIMESTAMP_MASK) == V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+#else
+    static_cast<void>(buffer);
+    return false;
+#endif
+}
+
+TimestampMetadata make_v4l2_timestamp_metadata(uint64_t host_receive_timestamp_ns, bool has_monotonic_timestamp) {
+    TimestampMetadata metadata;
+    metadata.host_receive_timestamp_ns = host_receive_timestamp_ns;
+    if (has_monotonic_timestamp) {
+        metadata.source = TimestampSource::V4L2_BUFFER;
+        metadata.clock_domain = TimestampClockDomain::MONOTONIC;
+        metadata.quality = TimestampQuality::KERNEL;
+        return metadata;
+    }
+
+    metadata.source = TimestampSource::HOST_FALLBACK;
+    metadata.clock_domain = TimestampClockDomain::MONOTONIC;
+    metadata.quality = TimestampQuality::FALLBACK;
+    return metadata;
+}
+
+} // namespace
 
 const std::unordered_map<std::string, uint32_t> Camera::FOURCC_FORMATS = {
     {"NV16", V4L2_PIX_FMT_NV16},
@@ -285,8 +327,6 @@ void Camera::_capture_loop() {
     pfd.events = POLLIN;
 
     const uint32_t subsample = _config.subsample_factor > 0 ? _config.subsample_factor : 1;
-    auto last_capture_time = std::chrono::steady_clock::now();
-
     while (_running) {
         int const ret = poll(&pfd, 1, -1);
         if (ret < 0) {
@@ -302,9 +342,11 @@ void Camera::_capture_loop() {
             const bool keep = (subsample == 1) || ((buf.sequence % subsample) == 0);
 
             if (keep) {
-                const auto timestamp = std::chrono::steady_clock::now();
-                _process_frame(_buffers[buf.index].start, buf.bytesused, buf.sequence, timestamp);
-                last_capture_time = timestamp;
+                const auto host_receive_timestamp_ns = steady_clock_now_ns();
+                const bool use_v4l2_timestamp = has_monotonic_v4l2_timestamp(buf);
+                const auto timestamp_ns = use_v4l2_timestamp ? v4l2_timestamp_to_ns(buf) : host_receive_timestamp_ns;
+                auto timestamp_metadata = make_v4l2_timestamp_metadata(host_receive_timestamp_ns, use_v4l2_timestamp);
+                _process_frame(_buffers[buf.index].start, buf.bytesused, buf.sequence, timestamp_ns, timestamp_metadata);
             }
 
             if (ioctl(_file_desc, VIDIOC_QBUF, &buf) < 0) {
@@ -318,10 +360,9 @@ void Camera::_capture_loop() {
     }
 }
 
-void Camera::_process_frame(void* data, size_t length, uint32_t sequence, const std::chrono::steady_clock::time_point& timestamp) {
+void Camera::_process_frame(void* data, size_t length, uint32_t sequence, uint64_t timestamp_ns, TimestampMetadata timestamp_metadata) {
     // NOTE: Copy as quickly as possible to free this thread for the next frame
-    const uint64_t timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(timestamp.time_since_epoch()).count();
-    _shdict_writer.add(_config.name, data, length, sequence, timestamp_ns);
+    _shdict_writer.add(_config.name, data, length, sequence, timestamp_ns, timestamp_metadata);
 }
 
 } // namespace core

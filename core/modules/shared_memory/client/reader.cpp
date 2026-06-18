@@ -34,6 +34,10 @@ void SharedDictReader::_populate_data_enty(DataEntry& entry, DataFrame* frame, u
     entry.head = head_index;
     entry.sequence = frame->sequence;
     entry.timestamp_ns = frame->timestamp_ns;
+    entry.timestamp_metadata.host_receive_timestamp_ns = frame->host_receive_timestamp_ns;
+    entry.timestamp_metadata.source = static_cast<TimestampSource>(frame->timestamp_source);
+    entry.timestamp_metadata.clock_domain = static_cast<TimestampClockDomain>(frame->timestamp_clock_domain);
+    entry.timestamp_metadata.quality = static_cast<TimestampQuality>(frame->timestamp_quality);
 }
 
 void SharedDictReader::read(DataEntry& entry, int32_t index_from_head) {

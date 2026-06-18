@@ -8,6 +8,7 @@
 #include "../logger/steady_clock_unix_time_mapper.hpp"
 #include "../master.hpp"
 #include "../ringbuffer.hpp"
+#include "../utils.hpp"
 #include "configs.hpp"
 
 #include <array>
@@ -53,6 +54,10 @@ private:
 
 struct LoggedImuMessage {
     uint64_t timestamp_ns{0};
+    uint64_t host_receive_timestamp_ns{0};
+    std::string timestamp_source;
+    std::string timestamp_clock_domain;
+    std::string timestamp_quality;
     uint32_t sequence{0};
     float x{0.0F};
     float y{0.0F};
@@ -119,12 +124,18 @@ TEST(LoggerTest, LoggerWritesImuSampleToMcap) {
 
         // WHEN: An IMU sample is published and the logger has time to consume it
         const std::array<float, 3> imu_sample{1.25F, -2.5F, 3.75F};
+        core::TimestampMetadata timestamp_metadata;
+        timestamp_metadata.host_receive_timestamp_ns = 425000U;
+        timestamp_metadata.source = core::TimestampSource::IIO_HARDWARE;
+        timestamp_metadata.clock_domain = core::TimestampClockDomain::MONOTONIC;
+        timestamp_metadata.quality = core::TimestampQuality::HARDWARE;
         shared_dict_writer.add(
             "accelerometer",
             imu_sample.data(),
             sizeof(imu_sample),
             41U,
-            424242U);
+            424242U,
+            timestamp_metadata);
 
         core::Buffer* const buffer = shared_dict_client.get_buffer();
         ASSERT_NE(buffer, nullptr);

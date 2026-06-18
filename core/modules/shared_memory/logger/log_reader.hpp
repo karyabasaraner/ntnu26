@@ -17,6 +17,10 @@ enum class LogTopicType : uint8_t {
 struct LoggedImuSeries {
     std::string topic;
     std::vector<uint64_t> timestamp_ns;
+    std::vector<uint64_t> host_receive_timestamp_ns;
+    std::vector<std::string> timestamp_source;
+    std::vector<std::string> timestamp_clock_domain;
+    std::vector<std::string> timestamp_quality;
     std::vector<uint32_t> sequence;
     std::vector<float> x;
     std::vector<float> y;
@@ -26,6 +30,10 @@ struct LoggedImuSeries {
 struct LoggedCompressedImageSeries {
     std::string topic;
     std::vector<uint64_t> timestamp_ns;
+    std::vector<uint64_t> host_receive_timestamp_ns;
+    std::vector<std::string> timestamp_source;
+    std::vector<std::string> timestamp_clock_domain;
+    std::vector<std::string> timestamp_quality;
     std::vector<std::string> frame_id;
     std::vector<std::string> format;
     std::vector<std::vector<std::byte>> jpeg_data;
@@ -40,6 +48,10 @@ struct TopicMetadata {
     double duration_s{0.0};
     double average_rate_hz{0.0};
     uint64_t payload_bytes{0};
+    std::string timestamp_source{"unknown"};
+    std::string timestamp_clock_domain{"unknown"};
+    std::string timestamp_quality{"unknown"};
+    bool uses_timestamp_fallback{false};
 };
 
 struct LogMetadata {

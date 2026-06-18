@@ -10,8 +10,13 @@ namespace core {
 struct DataFrame {
     // One frame of data, along with metadata
     uint64_t timestamp_ns{0};
+    uint64_t host_receive_timestamp_ns{0};
     uint32_t checksum{0}; // simple checksum of the data for integrity checking
     uint32_t sequence{0}; // sequence number for this frame, incremented by writer
+    uint8_t timestamp_source{0};
+    uint8_t timestamp_clock_domain{0};
+    uint8_t timestamp_quality{0};
+    uint8_t timestamp_reserved{0};
 
     //NOLINTNEXTLINE(hicpp-avoid-c-arrays,cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
     uint8_t data[];

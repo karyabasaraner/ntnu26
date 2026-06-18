@@ -270,6 +270,10 @@ TEST(ShareDictTest, ReaderReadAbsoluteReturnsFramePayloadAndMetadata) {
     frame->checksum = crc32(0, payload.data(), static_cast<unsigned int>(payload.size()));
     frame->sequence = 77U;
     frame->timestamp_ns = 123456789U;
+    frame->host_receive_timestamp_ns = 223456789U;
+    frame->timestamp_source = static_cast<uint8_t>(core::TimestampSource::IIO_HARDWARE);
+    frame->timestamp_clock_domain = static_cast<uint8_t>(core::TimestampClockDomain::MONOTONIC);
+    frame->timestamp_quality = static_cast<uint8_t>(core::TimestampQuality::HARDWARE);
 
     buffer->head.store(1U, std::memory_order_release);
 
@@ -282,6 +286,10 @@ TEST(ShareDictTest, ReaderReadAbsoluteReturnsFramePayloadAndMetadata) {
     EXPECT_EQ(entry.head, 0U);
     EXPECT_EQ(entry.sequence, 77U);
     EXPECT_EQ(entry.timestamp_ns, 123456789U);
+    EXPECT_EQ(entry.timestamp_metadata.host_receive_timestamp_ns, 223456789U);
+    EXPECT_EQ(entry.timestamp_metadata.source, core::TimestampSource::IIO_HARDWARE);
+    EXPECT_EQ(entry.timestamp_metadata.clock_domain, core::TimestampClockDomain::MONOTONIC);
+    EXPECT_EQ(entry.timestamp_metadata.quality, core::TimestampQuality::HARDWARE);
 }
 
 TEST(ShareDictTest, ReaderSkipsFramesWithChecksumMismatch) {
@@ -307,6 +315,10 @@ TEST(ShareDictTest, ReaderSkipsFramesWithChecksumMismatch) {
     frame->checksum = 0U;
     frame->sequence = 91U;
     frame->timestamp_ns = 42U;
+    frame->host_receive_timestamp_ns = 43U;
+    frame->timestamp_source = static_cast<uint8_t>(core::TimestampSource::V4L2_BUFFER);
+    frame->timestamp_clock_domain = static_cast<uint8_t>(core::TimestampClockDomain::MONOTONIC);
+    frame->timestamp_quality = static_cast<uint8_t>(core::TimestampQuality::KERNEL);
 
     core::DataEntry entry{};
     shared_dict_reader.read_absolute(entry, 0);
@@ -316,6 +328,7 @@ TEST(ShareDictTest, ReaderSkipsFramesWithChecksumMismatch) {
     EXPECT_TRUE(entry.data.empty());
     EXPECT_EQ(entry.sequence, 0U);
     EXPECT_EQ(entry.timestamp_ns, 0U);
+    EXPECT_EQ(entry.timestamp_metadata.host_receive_timestamp_ns, 0U);
 }
 
 TEST(ShareDictTest, WriterPublishesPayloadToSharedMemory) {
@@ -335,7 +348,12 @@ TEST(ShareDictTest, WriterPublishesPayloadToSharedMemory) {
     ASSERT_EQ(buffer->size_per_frame, payload.size());
 
     // WHEN: The writer publishes a payload
-    shared_dict_writer.add("accelerometer", payload.data(), payload.size(), 41U, 424242U);
+    core::TimestampMetadata timestamp_metadata;
+    timestamp_metadata.host_receive_timestamp_ns = 525252U;
+    timestamp_metadata.source = core::TimestampSource::IIO_HARDWARE;
+    timestamp_metadata.clock_domain = core::TimestampClockDomain::MONOTONIC;
+    timestamp_metadata.quality = core::TimestampQuality::HARDWARE;
+    shared_dict_writer.add("accelerometer", payload.data(), payload.size(), 41U, 424242U, timestamp_metadata);
 
     // THEN: The ringbuffer metadata advances to the published sequence
     ASSERT_TRUE(core::test::wait_for_predicate([buffer] {
@@ -352,6 +370,10 @@ TEST(ShareDictTest, WriterPublishesPayloadToSharedMemory) {
     EXPECT_EQ(entry.head, 0U);
     EXPECT_EQ(entry.sequence, 41U);
     EXPECT_EQ(entry.timestamp_ns, 424242U);
+    EXPECT_EQ(entry.timestamp_metadata.host_receive_timestamp_ns, 525252U);
+    EXPECT_EQ(entry.timestamp_metadata.source, core::TimestampSource::IIO_HARDWARE);
+    EXPECT_EQ(entry.timestamp_metadata.clock_domain, core::TimestampClockDomain::MONOTONIC);
+    EXPECT_EQ(entry.timestamp_metadata.quality, core::TimestampQuality::HARDWARE);
 }
 
 TEST(ShareDictTest, WriterRejectsOversizedPayloadWithoutAdvancingRingbuffer) {

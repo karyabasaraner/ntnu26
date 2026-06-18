@@ -31,6 +31,7 @@ public:
     SharedDictWriter& operator=(SharedDictWriter&&) = delete;
 
     void add(const std::string& key, const void* data, size_t length, uint32_t sequence, uint64_t timestamp_ns);
+    void add(const std::string& key, const void* data, size_t length, uint32_t sequence, uint64_t timestamp_ns, TimestampMetadata timestamp_metadata);
 
 private:
     Buffer* _buffer{nullptr};

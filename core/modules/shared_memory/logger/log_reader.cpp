@@ -36,16 +36,32 @@ constexpr std::string_view kBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh
 void update_topic_metadata(
     TopicMetadata& metadata,
     uint64_t timestamp_ns,
-    uint64_t payload_bytes
+    uint64_t payload_bytes,
+    const std::string& timestamp_source,
+    const std::string& timestamp_clock_domain,
+    const std::string& timestamp_quality
 ) {
     if (metadata.message_count == 0) {
         metadata.start_time_ns = timestamp_ns;
         metadata.end_time_ns = timestamp_ns;
+        metadata.timestamp_source = timestamp_source;
+        metadata.timestamp_clock_domain = timestamp_clock_domain;
+        metadata.timestamp_quality = timestamp_quality;
     } else {
         metadata.start_time_ns = std::min(metadata.start_time_ns, timestamp_ns);
         metadata.end_time_ns = std::max(metadata.end_time_ns, timestamp_ns);
+        if (metadata.timestamp_source != timestamp_source) {
+            metadata.timestamp_source = "mixed";
+        }
+        if (metadata.timestamp_clock_domain != timestamp_clock_domain) {
+            metadata.timestamp_clock_domain = "mixed";
+        }
+        if (metadata.timestamp_quality != timestamp_quality) {
+            metadata.timestamp_quality = "mixed";
+        }
     }
 
+    metadata.uses_timestamp_fallback = metadata.uses_timestamp_fallback || timestamp_quality == "fallback";
     ++metadata.message_count;
     metadata.payload_bytes += payload_bytes;
 }
@@ -216,6 +232,11 @@ std::size_t find_json_field(const std::string& json, const std::string& field, c
     }
 }
 
+bool has_json_field(const std::string& json, const std::string& field) {
+    const auto key = "\"" + field + "\"";
+    return json.find(key) != std::string::npos;
+}
+
 std::size_t skip_whitespace(const std::string& json, std::size_t offset) {
     while (offset < json.size() && std::isspace(static_cast<unsigned char>(json[offset])) != 0) {
         ++offset;
@@ -291,12 +312,26 @@ std::string extract_json_number_text(const std::string& json, const std::string&
     return json.substr(begin, offset - begin);
 }
 
+std::string extract_optional_json_string(const std::string& json, const std::string& field, const std::string& topic, const std::string& fallback) {
+    if (!has_json_field(json, field)) {
+        return fallback;
+    }
+    return extract_json_string(json, field, topic);
+}
+
 uint64_t extract_json_uint64(const std::string& json, const std::string& field, const std::string& topic) {
     try {
         return std::stoull(extract_json_number_text(json, field, topic));
     } catch (const std::exception& ex) {
         throw std::runtime_error("Malformed JSON integer field '" + field + "' for topic '" + topic + "': " + ex.what());
     }
+}
+
+uint64_t extract_optional_json_uint64(const std::string& json, const std::string& field, const std::string& topic, uint64_t fallback) {
+    if (!has_json_field(json, field)) {
+        return fallback;
+    }
+    return extract_json_uint64(json, field, topic);
 }
 
 double extract_json_double(const std::string& json, const std::string& field, const std::string& topic) {
@@ -375,13 +410,25 @@ void decode_imu_message(LoggedImuSeries& series, TopicMetadata& metadata, const 
     const auto json = message_data_to_string(message, topic);
 
     series.topic = topic;
-    series.timestamp_ns.push_back(extract_timestamp_ns(json, topic));
+    const auto timestamp_ns = extract_timestamp_ns(json, topic);
+    series.timestamp_ns.push_back(timestamp_ns);
+    series.host_receive_timestamp_ns.push_back(extract_optional_json_uint64(json, "host_receive_timestamp_ns", topic, timestamp_ns));
+    series.timestamp_source.push_back(extract_optional_json_string(json, "timestamp_source", topic, "unknown"));
+    series.timestamp_clock_domain.push_back(extract_optional_json_string(json, "timestamp_clock_domain", topic, "unknown"));
+    series.timestamp_quality.push_back(extract_optional_json_string(json, "timestamp_quality", topic, "unknown"));
     series.sequence.push_back(static_cast<uint32_t>(extract_json_uint64(json, "sequence", topic)));
     series.x.push_back(static_cast<float>(extract_json_double(json, "x", topic)));
     series.y.push_back(static_cast<float>(extract_json_double(json, "y", topic)));
     series.z.push_back(static_cast<float>(extract_json_double(json, "z", topic)));
 
-    update_topic_metadata(metadata, series.timestamp_ns.back(), message.dataSize);
+    update_topic_metadata(
+        metadata,
+        series.timestamp_ns.back(),
+        message.dataSize,
+        series.timestamp_source.back(),
+        series.timestamp_clock_domain.back(),
+        series.timestamp_quality.back()
+    );
 }
 
 void decode_compressed_image_message(
@@ -393,12 +440,24 @@ void decode_compressed_image_message(
     const auto json = message_data_to_string(message, topic);
 
     series.topic = topic;
-    series.timestamp_ns.push_back(extract_timestamp_ns(json, topic));
+    const auto timestamp_ns = extract_timestamp_ns(json, topic);
+    series.timestamp_ns.push_back(timestamp_ns);
+    series.host_receive_timestamp_ns.push_back(extract_optional_json_uint64(json, "host_receive_timestamp_ns", topic, timestamp_ns));
+    series.timestamp_source.push_back(extract_optional_json_string(json, "timestamp_source", topic, "unknown"));
+    series.timestamp_clock_domain.push_back(extract_optional_json_string(json, "timestamp_clock_domain", topic, "unknown"));
+    series.timestamp_quality.push_back(extract_optional_json_string(json, "timestamp_quality", topic, "unknown"));
     series.frame_id.push_back(extract_json_string(json, "frame_id", topic));
     series.format.push_back(extract_json_string(json, "format", topic));
     series.jpeg_data.push_back(base64_decode(extract_json_string(json, "data", topic), topic));
 
-    update_topic_metadata(metadata, series.timestamp_ns.back(), message.dataSize);
+    update_topic_metadata(
+        metadata,
+        series.timestamp_ns.back(),
+        message.dataSize,
+        series.timestamp_source.back(),
+        series.timestamp_clock_domain.back(),
+        series.timestamp_quality.back()
+    );
 }
 
 std::string topic_type_to_string(LogTopicType type) {
@@ -535,7 +594,11 @@ std::string format_log_metadata(const LogMetadata& metadata) {
             << topic_metadata.message_count << " messages, "
             << topic_metadata.duration_s << " s, "
             << topic_metadata.average_rate_hz << " Hz, "
-            << topic_metadata.payload_bytes << " payload bytes\n";
+            << topic_metadata.payload_bytes << " payload bytes, "
+            << "timestamp_source=" << topic_metadata.timestamp_source << ", "
+            << "timestamp_clock_domain=" << topic_metadata.timestamp_clock_domain << ", "
+            << "timestamp_quality=" << topic_metadata.timestamp_quality << ", "
+            << "uses_timestamp_fallback=" << (topic_metadata.uses_timestamp_fallback ? "true" : "false") << '\n';
     }
 
     return out.str();
