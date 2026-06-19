@@ -34,6 +34,7 @@ namespace core {
 namespace {
 
 constexpr uint64_t kNanosecondsPerSecond = 1'000'000'000ULL;
+constexpr auto kStatusLogInterval = std::chrono::seconds(10);
 constexpr std::string_view kBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 std::string json_escape(const std::string& value) {
@@ -104,6 +105,14 @@ void assign_payload(std::vector<std::byte>& payload, const std::string& json) {
     });
 }
 
+uint32_t compute_backlog_frames(uint32_t current_sequence, uint32_t latest_sequence) {
+    if (latest_sequence < current_sequence) {
+        return 0U;
+    }
+
+    return latest_sequence - current_sequence;
+}
+
 } // namespace
 
 SharedDictLogger::SharedDictLogger(const std::string& config_path, std::string output_path) :
@@ -132,6 +141,7 @@ void SharedDictLogger::_initialize_streams() {
         stream.current_head = 0;
         stream.current_sequence = 0;
         stream.num_frames = std::max<uint32_t>(1, _buffer_sizes[cam_cfg.name]);
+        stream.last_status_log = std::chrono::steady_clock::time_point::min();
         _sensor_streams.push_back(std::move(stream));
     }
 
@@ -147,6 +157,7 @@ void SharedDictLogger::_initialize_streams() {
         stream.current_head = 0;
         stream.current_sequence = 0;
         stream.num_frames = std::max<uint32_t>(1, _buffer_sizes[imu_cfg.name]);
+        stream.last_status_log = std::chrono::steady_clock::time_point::min();
         _sensor_streams.push_back(std::move(stream));
     }
 }
@@ -218,12 +229,11 @@ void SharedDictLogger::run() {
         workers.emplace_back([this, stream_ptr]() {
             try {
                 while (!_stop.load(std::memory_order_acquire)) {
-                    _process_stream(*stream_ptr);
-                    if (stream_ptr->type == StreamType::CAMERA) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60Hz is enough here
-                    } else if (stream_ptr->type == StreamType::IMU) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(1)); // ~1000Hz
-                    } else {
+                    const bool made_progress = _process_stream(*stream_ptr);
+                    if (!made_progress) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    }
+                    if (stream_ptr->type != StreamType::CAMERA && stream_ptr->type != StreamType::IMU) {
                         spdlog::warn("Unknown stream type for {}: {}", stream_ptr->name, static_cast<int>(stream_ptr->type));
                         break;
                     }
@@ -341,98 +351,131 @@ bool SharedDictLogger::_write_entry(SensorStream& stream, const DataEntry& entry
     return true;
 }
 
-void SharedDictLogger::_process_stream(SensorStream& stream) {
+void SharedDictLogger::_log_stream_status(SensorStream& stream, const DataEntry& latest_entry) {
+    if (stream.last_status_log != std::chrono::steady_clock::time_point::min() &&
+        (std::chrono::steady_clock::now() - stream.last_status_log) < kStatusLogInterval) {
+        return;
+    }
+
+    const auto backlog_frames = compute_backlog_frames(stream.current_sequence, latest_entry.sequence);
+    spdlog::info(
+        "Logger status [{}]: logging seq {}, latest seq {}, backlog {} frame(s), logging head {}, data head {}, buffer size {}",
+        stream.name,
+        stream.current_sequence,
+        latest_entry.sequence,
+        backlog_frames,
+        stream.current_head,
+        latest_entry.head,
+        stream.num_frames
+    );
+
+    stream.last_status_log = std::chrono::steady_clock::now();
+}
+
+bool SharedDictLogger::_process_stream(SensorStream& stream) {
     if (stream.reader == nullptr || !stream.reader->is_ready()) {
-        return;
+        return false;
     }
 
-    // 0. Initialize the stream: This is where we start logging
-    if (!stream.initialized) {
-        DataEntry entry;
+    bool wrote_any = false;
+    for (;;) {
+        // 0. Initialize the stream: This is where we start logging
+        if (!stream.initialized) {
+            DataEntry entry;
 
-        stream.reader->read_latest(entry);
+            stream.reader->read_latest(entry);
 
-        if (entry.data.empty()) {
-            spdlog::debug("Failed to read initial frame for {}, cannot initialize stream", stream.name);
-            return;
-        }
+            if (entry.data.empty()) {
+                spdlog::debug("Failed to read initial frame for {}, cannot initialize stream", stream.name);
+                return wrote_any;
+            }
 
-        if (entry.head >= stream.num_frames) {
-            spdlog::debug("Initial head {} for {} is out of bounds for num_frames {}, cannot initialize stream", entry.head, stream.name, stream.num_frames);
-            return;
-        }
+            if (entry.head >= stream.num_frames) {
+                spdlog::debug("Initial head {} for {} is out of bounds for num_frames {}, cannot initialize stream", entry.head, stream.name, stream.num_frames);
+                return wrote_any;
+            }
 
-        stream.current_head = entry.head;
-        stream.current_sequence = entry.sequence;
-        stream.initialized = true;
-        spdlog::info("Initializing sensor stream {}: latest head is {}", stream.name, stream.current_head);
-    }
-
-    DataEntry latest_entry;
-    stream.reader->read_latest(latest_entry);
-    if (latest_entry.data.empty()) {
-        return;
-    }
-
-    const auto progress = logger_detail::analyze_stream_progress(stream.current_sequence, latest_entry.sequence, stream.num_frames);
-    if (progress.available_frames == 0U) {
-        return;
-    }
-
-    if (progress.needs_resync) {
-        spdlog::warn(
-            "Stream {} lagged by {} frame(s): expected sequence {}, latest sequence {}, buffer size {}. Resyncing to latest frame.",
-            stream.name,
-            progress.skipped_frames,
-            stream.current_sequence,
-            latest_entry.sequence,
-            stream.num_frames
-        );
-
-        stream.current_head = latest_entry.head;
-        stream.current_sequence = latest_entry.sequence;
-        if (!_write_entry(stream, latest_entry)) {
-            return;
-        }
-
-        stream.current_head = (stream.current_head + 1) % stream.num_frames;
-        stream.current_sequence = latest_entry.sequence + 1U;
-        return;
-    }
-
-    while (stream.current_sequence <= latest_entry.sequence) {
-        DataEntry entry;
-        stream.reader->read_absolute(entry, stream.current_head);
-        if (entry.data.empty()) {
-            return;
-        }
-
-        if (entry.sequence < stream.current_sequence) {
-            return;
-        }
-
-        if (entry.sequence > stream.current_sequence) {
-            spdlog::warn(
-                "Stream {} lost synchronization: expected sequence {}, got {}. Resyncing to frame {}.",
-                stream.name,
-                stream.current_sequence,
-                entry.sequence,
-                entry.head
-            );
             stream.current_head = entry.head;
             stream.current_sequence = entry.sequence;
+            stream.initialized = true;
+            stream.last_status_log = std::chrono::steady_clock::now();
+            spdlog::info("Initializing sensor stream {}: latest head is {}", stream.name, stream.current_head);
         }
 
-        if (!_write_entry(stream, entry)) {
-            return;
+        DataEntry latest_entry;
+        stream.reader->read_latest(latest_entry);
+        if (latest_entry.data.empty()) {
+            return wrote_any;
         }
 
-        stream.current_head = (stream.current_head + 1) % stream.num_frames;
-        stream.current_sequence = entry.sequence + 1U;
-        if (stream.current_sequence > latest_entry.sequence) {
-            break;
+        _log_stream_status(stream, latest_entry);
+
+        const auto progress = logger_detail::analyze_stream_progress(stream.current_sequence, latest_entry.sequence, stream.num_frames);
+        if (progress.available_frames == 0U) {
+            return wrote_any;
+        }
+
+        if (progress.needs_resync) {
+            spdlog::warn(
+                "Stream {} lagged by {} frame(s): expected sequence {}, latest sequence {}, buffer size {}. Resyncing to latest frame.",
+                stream.name,
+                progress.skipped_frames,
+                stream.current_sequence,
+                latest_entry.sequence,
+                stream.num_frames
+            );
+
+            stream.current_head = latest_entry.head;
+            stream.current_sequence = latest_entry.sequence;
+            if (!_write_entry(stream, latest_entry)) {
+                return wrote_any;
+            }
+
+            wrote_any = true;
+            stream.current_head = (stream.current_head + 1) % stream.num_frames;
+            stream.current_sequence = latest_entry.sequence + 1U;
+            continue;
+        }
+
+        while (stream.current_sequence <= latest_entry.sequence) {
+            DataEntry entry;
+            stream.reader->read_absolute(entry, stream.current_head);
+            if (entry.data.empty()) {
+                return wrote_any;
+            }
+
+            if (entry.sequence < stream.current_sequence) {
+                return wrote_any;
+            }
+
+            if (entry.sequence > stream.current_sequence) {
+                const auto skipped_frames = entry.sequence - stream.current_sequence;
+                spdlog::warn(
+                    "Stream {} lost synchronization: expected sequence {}, got {}. Skipped {} frame(s) and resyncing to frame {}.",
+                    stream.name,
+                    stream.current_sequence,
+                    entry.sequence,
+                    skipped_frames,
+                    entry.head
+                );
+                stream.current_head = entry.head;
+                stream.current_sequence = entry.sequence;
+            }
+
+            if (!_write_entry(stream, entry)) {
+                return wrote_any;
+            }
+
+            wrote_any = true;
+            stream.current_head = (stream.current_head + 1) % stream.num_frames;
+            stream.current_sequence = entry.sequence + 1U;
+            if (stream.current_sequence > latest_entry.sequence) {
+                break;
+            }
         }
     }
+
+    return wrote_any;
 }
 
 } // namespace core

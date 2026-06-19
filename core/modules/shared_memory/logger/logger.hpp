@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <chrono>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -37,6 +38,7 @@ struct SensorStream {
     uint32_t current_head{0};
     uint32_t current_sequence{0};
     uint32_t num_frames{1};
+    std::chrono::steady_clock::time_point last_status_log{std::chrono::steady_clock::time_point::min()};
 };
 
 class SharedDictLogger {
@@ -66,7 +68,8 @@ private:
     void _initialize_streams();
     void _open_writer();
     void _register_channels();
-    void _process_stream(SensorStream& stream);
+    void _log_stream_status(SensorStream& stream, const DataEntry& latest_entry);
+    bool _process_stream(SensorStream& stream);
     bool _write_entry(SensorStream& stream, const DataEntry& entry);
     bool _get_camera_payload(const DataEntry& entry, const SensorStream& stream, uint64_t timestamp_ns, std::vector<std::byte>& payload);
     static bool _get_imu_payload(const DataEntry& entry, uint64_t timestamp_ns, std::vector<std::byte>& payload);

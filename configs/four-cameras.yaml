@@ -19,10 +19,10 @@ cameras:
         value: 1 # Frame Sync 30 Hz
         id: 0x009a092a
       - name: exposure_auto
-        value: 1 # Manual Mode
+        value: 0 # 0 Auto, 1 Manual Mode
         id: 0x009a0901
       - name: exposure_time_absolute
-        value: 15
+        value: 75
         id: 0x009a0902
     format: UYVY
     req_buffer_count: 4
@@ -46,10 +46,10 @@ cameras:
         value: 1
         id: 0x009a092a
       - name: exposure_auto
-        value: 1 # Manual Mode
+        value: 0 # 0 Auto, 1 Manual Mode
         id: 0x009a0901
       - name: exposure_time_absolute
-        value: 15
+        value: 75
         id: 0x009a0902
     format: UYVY
     req_buffer_count: 4
@@ -73,10 +73,10 @@ cameras:
         value: 1
         id: 0x009a092a
       - name: exposure_auto
-        value: 1 # Manual Mode
+        value: 0 # 0 Auto, 1 Manual Mode
         id: 0x009a0901
       - name: exposure_time_absolute
-        value: 15
+        value: 75
         id: 0x009a0902
     format: UYVY
     req_buffer_count: 1
@@ -100,10 +100,10 @@ cameras:
         value: 1
         id: 0x009a092a
       - name: exposure_auto
-        value: 1 # Manual Mode
+        value: 0 # 0 Auto, 1 Manual Mode
         id: 0x009a0901
       - name: exposure_time_absolute
-        value: 15
+        value: 75
         id: 0x009a0902
     format: UYVY
     req_buffer_count: 1
