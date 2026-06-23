@@ -31,6 +31,7 @@ main() {
         libopencv-dev
         libspdlog-dev
         libusb-1.0-0-dev
+        libxcb-cursor0
         libxml2-dev
         libyaml-cpp-dev
         libzstd-dev

@@ -8,7 +8,7 @@ if [ ! -d "$VENV_DIR" ]; then
     source "$VENV_DIR/bin/activate"
     pip3 install --upgrade pip
 
-    pip3 install numpy torch matplotlib pyyaml
+    pip3 install numpy torch matplotlib pyyaml mcap
 else
     source "$VENV_DIR/bin/activate"
 fi

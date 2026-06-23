@@ -119,6 +119,7 @@ def main() -> int:
     import matplotlib.pyplot as plt
 
     plt.show()
+    # plt.savefig("imu_fft.png", dpi=300)
     return 0
 
 

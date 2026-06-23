@@ -5,6 +5,7 @@
 #include "mcap/writer.hpp"
 #include "schema.hpp"
 #include "steady_clock_unix_time_mapper.hpp"
+#include "stream_progress.hpp"
 
 #include <algorithm>
 #include <array>
@@ -410,7 +411,11 @@ bool SharedDictLogger::_process_stream(SensorStream& stream) {
 
         _log_stream_status(stream, latest_entry);
 
-        const auto progress = logger_detail::analyze_stream_progress(stream.current_sequence, latest_entry.sequence, stream.num_frames);
+        const auto progress = core::logger_detail::analyze_stream_progress(
+            stream.current_sequence,
+            latest_entry.sequence,
+            stream.num_frames
+        );
         if (progress.available_frames == 0U) {
             return wrote_any;
         }

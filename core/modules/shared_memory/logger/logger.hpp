@@ -7,7 +7,6 @@
 #include "../utils.hpp"
 #include "configs.hpp"
 #include "mcap/types.hpp"
-#include "stream_progress.hpp"
 #include "steady_clock_unix_time_mapper.hpp"
 
 #include <atomic>
