@@ -295,12 +295,13 @@ TEST(LoggerTest, LoggerWritesCameraSampleToMcap) {
     writer:
       width: 1
       height: 1
-    device: /dev/video0
     fps: 30
     subsample_factor: 1
-    settings: []
-    format: UYVY
-    req_buffer_count: 1
+    v4l2:
+      device: /dev/video0
+      format: UYVY
+      req_buffer_count: 1
+      settings: []
 imus: []
 shared_memory:
   - name: cam0

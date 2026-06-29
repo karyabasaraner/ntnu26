@@ -15,6 +15,29 @@ and then build with:
 cmake --build build -j
 ```
 
+### Optional Basler Pylon camera support
+
+Basler GigE cameras are disabled by default, so a normal build does not require the Pylon SDK.
+Install the Basler Pylon Software Suite development package and enable the backend explicitly:
+
+```
+export PYLON_ROOT=/opt/pylon
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_PYLON=ON
+cmake --build build -j
+```
+
+The SDK must provide its `pylon-config.cmake` package and `pylon::pylon` target.
+If Pylon is installed outside `/opt/pylon`, set `PYLON_ROOT` or add its install prefix to `CMAKE_PREFIX_PATH`.
+
+The development container installs Pylon automatically during image creation when exactly one `pylon-*_linux-x86_64_debs.tar.gz` archive is present in `.devcontainer/devel`.
+The archive is optional and is not copied into an image layer.
+
+`configs/basler-dart.yaml` is a minimal configuration for the color Basler dart M `dmA720-290gc` in a four-camera layout.
+Each camera selects its backend by containing exactly one `v4l2` or `pylon` mapping.
+Update the Pylon IP addresses and configure the host NIC on the same subnet.
+This camera module requires a dart M GigE interface board or GigE switch.
+The backend acquires `BayerRG8`, converts it to packed RGB8 with Pylon, and publishes it through the existing shared-memory path used by the web frontend and MCAP logger.
+
 ### Requirements Jetson
 ```
 sudo apt install ccache \

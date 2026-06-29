@@ -1,0 +1,73 @@
+cameras:
+  - name: front_left
+    fps: 30
+    subsample_factor: 1
+    writer:
+      width: 720
+      height: 540
+      transforms: []
+    pylon:
+      ip_address: 192.168.10.2
+      format: BayerRG8
+      exposure_time_us: 2000
+      gain: 1.0
+      packet_size: 4000
+      inter_packet_delay: 1000
+  - name: front_right
+    fps: 30
+    subsample_factor: 1
+    writer:
+      width: 720
+      height: 540
+      transforms: []
+    pylon:
+      ip_address: 192.168.10.3
+      format: BayerRG8
+      exposure_time_us: 2000
+      gain: 1.0
+      packet_size: 4000
+      inter_packet_delay: 1000
+  - name: left
+    fps: 30
+    subsample_factor: 1
+    writer:
+      width: 720
+      height: 540
+      transforms: []
+    pylon:
+      ip_address: 192.168.10.4
+      format: BayerRG8
+      exposure_time_us: 2000
+      gain: 1.0
+      packet_size: 4000
+      inter_packet_delay: 1000
+  - name: right
+    fps: 30
+    subsample_factor: 1
+    writer:
+      width: 720
+      height: 540
+      transforms: []
+    pylon:
+      ip_address: 192.168.10.5
+      format: BayerRG8
+      exposure_time_us: 2000
+      gain: 1.0
+      packet_size: 4000
+      inter_packet_delay: 1000
+
+imus: []
+
+shared_memory:
+  - name: front_left
+    size_per_frame: 1166400 # 720 * 540 * 3-byte RGB output
+    num_frames: 300         # 10 seconds at 30 fps
+  - name: front_right
+    size_per_frame: 1166400
+    num_frames: 300
+  - name: left
+    size_per_frame: 1166400
+    num_frames: 300
+  - name: right
+    size_per_frame: 1166400
+    num_frames: 300

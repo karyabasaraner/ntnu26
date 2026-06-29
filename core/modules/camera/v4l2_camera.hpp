@@ -48,7 +48,7 @@ private:
     bool _configure() const;
     bool _configure_format() const;
     void _configure_fps() const;
-    void _configure_setting(const SettingsConfig& setting) const;
+    void _configure_setting(const V4L2SettingConfig& setting) const;
     void _configure_settings() const;
     uint32_t _find_control_id(const std::string& name) const;
     bool _init_mmap();

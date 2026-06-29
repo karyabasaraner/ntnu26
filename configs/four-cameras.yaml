@@ -5,108 +5,112 @@ cameras:
       height: 720
       transforms:
       - name: UYVY2RGB
-    device: /dev/video0
     fps: 30 # NOTE: This is not working; but we set the frame sync setting below
     subsample_factor: 1
-    settings:
-      - name: vertical_flip
-        value: 1
-      - name: horizontal_flip
-        value: 1
-      - name: white_balance_automatic
-        value: 0
-      - name: frame_sync
-        value: 1 # Frame Sync 30 Hz
-        id: 0x009a092a
-      - name: exposure_auto
-        value: 0 # 0 Auto, 1 Manual Mode
-        id: 0x009a0901
-      - name: exposure_time_absolute
-        value: 75
-        id: 0x009a0902
-    format: UYVY
-    req_buffer_count: 4
+    v4l2:
+      device: /dev/video0
+      format: UYVY
+      req_buffer_count: 4
+      settings:
+        - name: vertical_flip
+          value: 1
+        - name: horizontal_flip
+          value: 1
+        - name: white_balance_automatic
+          value: 0
+        - name: frame_sync
+          value: 1 # Frame Sync 30 Hz
+          id: 0x009a092a
+        - name: exposure_auto
+          value: 0 # 0 Auto, 1 Manual Mode
+          id: 0x009a0901
+        - name: exposure_time_absolute
+          value: 75
+          id: 0x009a0902
   - name: front_right
     writer:
       width: 1280
       height: 720
       transforms:
       - name: UYVY2RGB
-    device: /dev/video1
     fps: 30
     subsample_factor: 1
-    settings:
-      - name: vertical_flip
-        value: 1
-      - name: horizontal_flip
-        value: 1
-      - name: white_balance_automatic
-        value: 0
-      - name: frame_sync
-        value: 1
-        id: 0x009a092a
-      - name: exposure_auto
-        value: 0 # 0 Auto, 1 Manual Mode
-        id: 0x009a0901
-      - name: exposure_time_absolute
-        value: 75
-        id: 0x009a0902
-    format: UYVY
-    req_buffer_count: 4
+    v4l2:
+      device: /dev/video1
+      format: UYVY
+      req_buffer_count: 4
+      settings:
+        - name: vertical_flip
+          value: 1
+        - name: horizontal_flip
+          value: 1
+        - name: white_balance_automatic
+          value: 0
+        - name: frame_sync
+          value: 1
+          id: 0x009a092a
+        - name: exposure_auto
+          value: 0 # 0 Auto, 1 Manual Mode
+          id: 0x009a0901
+        - name: exposure_time_absolute
+          value: 75
+          id: 0x009a0902
   - name: left
     writer:
       width: 1280
       height: 720
       transforms:
       - name: UYVY2RGB
-    device: /dev/video2
     fps: 30
     subsample_factor: 1
-    settings:
-      - name: vertical_flip
-        value: 1
-      - name: horizontal_flip
-        value: 1
-      - name: white_balance_automatic
-        value: 0
-      - name: frame_sync
-        value: 1
-        id: 0x009a092a
-      - name: exposure_auto
-        value: 0 # 0 Auto, 1 Manual Mode
-        id: 0x009a0901
-      - name: exposure_time_absolute
-        value: 75
-        id: 0x009a0902
-    format: UYVY
-    req_buffer_count: 1
+    v4l2:
+      device: /dev/video2
+      format: UYVY
+      req_buffer_count: 1
+      settings:
+        - name: vertical_flip
+          value: 1
+        - name: horizontal_flip
+          value: 1
+        - name: white_balance_automatic
+          value: 0
+        - name: frame_sync
+          value: 1
+          id: 0x009a092a
+        - name: exposure_auto
+          value: 0 # 0 Auto, 1 Manual Mode
+          id: 0x009a0901
+        - name: exposure_time_absolute
+          value: 75
+          id: 0x009a0902
   - name: right
     writer:
       width: 1280
       height: 720
       transforms:
       - name: UYVY2RGB
-    device: /dev/video3
     fps: 30
     subsample_factor: 1
-    settings:
-      - name: vertical_flip
-        value: 1
-      - name: horizontal_flip
-        value: 1
-      - name: white_balance_automatic
-        value: 0
-      - name: frame_sync
-        value: 1
-        id: 0x009a092a
-      - name: exposure_auto
-        value: 0 # 0 Auto, 1 Manual Mode
-        id: 0x009a0901
-      - name: exposure_time_absolute
-        value: 75
-        id: 0x009a0902
-    format: UYVY
-    req_buffer_count: 1
+    v4l2:
+      device: /dev/video3
+      format: UYVY
+      req_buffer_count: 1
+      settings:
+        - name: vertical_flip
+          value: 1
+        - name: horizontal_flip
+          value: 1
+        - name: white_balance_automatic
+          value: 0
+        - name: frame_sync
+          value: 1
+          id: 0x009a092a
+        - name: exposure_auto
+          value: 0 # 0 Auto, 1 Manual Mode
+          id: 0x009a0901
+        - name: exposure_time_absolute
+          value: 75
+          id: 0x009a0902
 imus:
   - name: accelerometer
     device: "iio:device0"

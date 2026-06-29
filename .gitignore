@@ -47,3 +47,4 @@ hardware/jetson-flash/*
 clang-tidy-fixes.yaml
 *.mcap
 *.bag
+*.tar.gz

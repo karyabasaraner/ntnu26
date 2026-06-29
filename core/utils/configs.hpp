@@ -18,7 +18,7 @@ struct TransformConfig {
     std::string name;
 };
 
-struct SettingsConfig {
+struct V4L2SettingConfig {
     int value;
     std::string name;
     uint32_t id{0};
@@ -30,15 +30,36 @@ struct WriterConfig {
     std::vector<TransformConfig> transforms;
 };
 
-struct CameraConfig {
-    size_t fps;
-    size_t req_buffer_count;
+enum class CameraBackend : uint8_t {
+    none,
+    v4l2,
+    pylon,
+};
+
+struct V4L2CameraConfig {
+    size_t req_buffer_count{4};
     std::string device;
     std::string format;
+    std::vector<V4L2SettingConfig> settings;
+};
+
+struct PylonCameraConfig {
+    double exposure_time_us{0.0};
+    double gain{0.0};
+    std::string format;
+    std::string ip_address;
+    uint32_t inter_packet_delay{0};
+    uint32_t packet_size{0};
+};
+
+struct CameraConfig {
+    CameraBackend backend{CameraBackend::none};
+    size_t fps{0};
     std::string name;
-    std::vector<SettingsConfig> settings;
-    WriterConfig writer;
+    PylonCameraConfig pylon;
     uint32_t subsample_factor{1};
+    V4L2CameraConfig v4l2;
+    WriterConfig writer;
 };
 
 struct IMUConfig {
@@ -60,7 +81,9 @@ struct RootConfig {
 
 void declare_config(CameraConfig& config);
 void declare_config(IMUConfig& config);
+void declare_config(PylonCameraConfig& config);
 void declare_config(RootConfig& config);
+void declare_config(V4L2CameraConfig& config);
 void declare_config(WriterConfig& config);
 
 class Config {

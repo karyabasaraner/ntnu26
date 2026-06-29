@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 FROM nvidia/cuda:12.9.0-cudnn-devel-ubuntu24.04
 
 ARG TZ=Europe/Zurich
@@ -11,6 +13,12 @@ RUN /tmp/min_packages.sh && rm -f /tmp/min_packages.sh
 
 COPY all_packages.sh /tmp/all_packages.sh
 RUN /tmp/all_packages.sh && rm -f /tmp/all_packages.sh
+
+# Install the optional Pylon SDK without copying its archive into an image layer.
+RUN --mount=type=bind,source=.,target=/tmp/devel,ro \
+    /tmp/devel/install_pylon.sh
+
+ENV PYLON_ROOT=/opt/pylon
 
 ENV LANG="en_US.UTF-8" \
     LANGUAGE="en_US:en" \

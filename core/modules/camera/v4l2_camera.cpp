@@ -81,7 +81,7 @@ void V4L2Camera::_post_stop() noexcept {
 bool V4L2Camera::_start_acquisition() {
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(_file_desc, VIDIOC_STREAMON, &type) < 0) {
-        spdlog::warn("Failed to start streaming: {}, {}", get_config().device, errno);
+        spdlog::warn("Failed to start streaming: {}, {}", get_config().v4l2.device, errno);
         return false;
     }
     return true;
@@ -90,7 +90,7 @@ bool V4L2Camera::_start_acquisition() {
 bool V4L2Camera::_stop_acquisition() noexcept {
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(_file_desc, VIDIOC_STREAMOFF, &type) < 0) {
-        spdlog::warn("Failed to stop streaming: {}, {}", get_config().device, errno);
+        spdlog::warn("Failed to stop streaming: {}, {}", get_config().v4l2.device, errno);
         return false;
     }
     return true;
@@ -99,36 +99,36 @@ bool V4L2Camera::_stop_acquisition() noexcept {
 
 bool V4L2Camera::_open_device() {
     if (_file_desc >= 0) {
-        spdlog::info("Camera already open: {}", get_config().device);
+        spdlog::info("Camera already open: {}", get_config().v4l2.device);
         return true;
     }
 
-    if (!std::filesystem::exists(get_config().device)) {
-        spdlog::warn("Camera device does not exist: {}", get_config().device);
+    if (!std::filesystem::exists(get_config().v4l2.device)) {
+        spdlog::warn("Camera device does not exist: {}", get_config().v4l2.device);
         return false;
     }
 
-    _file_desc = open(get_config().device.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC, 0);
+    _file_desc = open(get_config().v4l2.device.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC, 0);
     if (_file_desc < 0) {
-        spdlog::warn("Failed to open camera device: {}, {}", get_config().device, errno);
+        spdlog::warn("Failed to open camera device: {}, {}", get_config().v4l2.device, errno);
         return false;
     }
-    spdlog::info("Opened camera device: {}", get_config().device);
+    spdlog::info("Opened camera device: {}", get_config().v4l2.device);
     return true;
 }
 
 bool V4L2Camera::_close_device() {
     if (_file_desc < 0) {
-        spdlog::info("Camera device already closed: {}", get_config().device);
+        spdlog::info("Camera device already closed: {}", get_config().v4l2.device);
         return true;
     }
 
     if (close(_file_desc) < 0) {
-        spdlog::warn("Failed to close camera device: {}, {}", get_config().device, errno);
+        spdlog::warn("Failed to close camera device: {}, {}", get_config().v4l2.device, errno);
         return false;
     }
     _file_desc = -1;
-    spdlog::info("Closed camera device: {}", get_config().device);
+    spdlog::info("Closed camera device: {}", get_config().v4l2.device);
     return true;
 }
 
@@ -148,14 +148,14 @@ bool V4L2Camera::_configure_format() const {
 
     fmt.fmt.pix.width = get_config().writer.width;
     fmt.fmt.pix.height = get_config().writer.height;
-    fmt.fmt.pix.pixelformat = FOURCC_FORMATS.at(get_config().format);
+    fmt.fmt.pix.pixelformat = FOURCC_FORMATS.at(get_config().v4l2.format);
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
 
     if (ioctl(_file_desc, VIDIOC_S_FMT, &fmt) < 0) {
-        spdlog::warn("Failed to set format for device: {}, {}", get_config().device, errno);
+        spdlog::warn("Failed to set format for device: {}, {}", get_config().v4l2.device, errno);
         return false;
     }
-    spdlog::info("Configured camera device: {}", get_config().device);
+    spdlog::info("Configured camera device: {}", get_config().v4l2.device);
     return true;
 }
 
@@ -167,40 +167,40 @@ void V4L2Camera::_configure_fps() const {
     struct v4l2_streamparm stream_parameters{};
     stream_parameters.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(_file_desc, VIDIOC_G_PARM, &stream_parameters) < 0) {
-        spdlog::warn("VIDIOC_G_PARM unsupported; cannot set FPS for device: {}, {}", get_config().device, errno);
+        spdlog::warn("VIDIOC_G_PARM unsupported; cannot set FPS for device: {}, {}", get_config().v4l2.device, errno);
         return;
     }
     if ((stream_parameters.parm.capture.capability & V4L2_CAP_TIMEPERFRAME) == 0) {
-        spdlog::info("Driver does not expose timeperframe; cannot set FPS for device: {}", get_config().device);
+        spdlog::info("Driver does not expose timeperframe; cannot set FPS for device: {}", get_config().v4l2.device);
         return;
     }
 
     stream_parameters.parm.capture.timeperframe.numerator = 1;
     stream_parameters.parm.capture.timeperframe.denominator = get_config().fps;
     if (ioctl(_file_desc, VIDIOC_S_PARM, &stream_parameters) < 0) {
-        spdlog::warn("Failed to set FPS={} on device: {}, {}", get_config().fps, get_config().device, errno);
+        spdlog::warn("Failed to set FPS={} on device: {}, {}", get_config().fps, get_config().v4l2.device, errno);
         return;
     }
 
     if (ioctl(_file_desc, VIDIOC_G_PARM, &stream_parameters) == 0 && stream_parameters.parm.capture.timeperframe.numerator != 0) {
         const double actual_fps = static_cast<double>(stream_parameters.parm.capture.timeperframe.denominator)
             / static_cast<double>(stream_parameters.parm.capture.timeperframe.numerator);
-        spdlog::info("Requested FPS={} -> actual {:.2f} for device: {}", get_config().fps, actual_fps, get_config().device);
+        spdlog::info("Requested FPS={} -> actual {:.2f} for device: {}", get_config().fps, actual_fps, get_config().v4l2.device);
         return;
     }
-    spdlog::info("Requested FPS={} for device: {} (could not verify actual)", get_config().fps, get_config().device);
+    spdlog::info("Requested FPS={} for device: {} (could not verify actual)", get_config().fps, get_config().v4l2.device);
 }
 
 void V4L2Camera::_configure_settings() const {
-    for (const auto& setting : get_config().settings) {
+    for (const auto& setting : get_config().v4l2.settings) {
         _configure_setting(setting);
     }
 }
 
-void V4L2Camera::_configure_setting(const SettingsConfig& setting) const {
+void V4L2Camera::_configure_setting(const V4L2SettingConfig& setting) const {
     uint32_t const control_id = setting.id != 0 ? setting.id : _find_control_id(setting.name);
     if (control_id == 0) {
-        spdlog::warn("Control '{}' not found on device: {}", setting.name, get_config().device);
+        spdlog::warn("Control '{}' not found on device: {}", setting.name, get_config().v4l2.device);
         return;
     }
 
@@ -208,10 +208,10 @@ void V4L2Camera::_configure_setting(const SettingsConfig& setting) const {
     control.id = control_id;
     control.value = setting.value;
     if (ioctl(_file_desc, VIDIOC_S_CTRL, &control) < 0) {
-        spdlog::warn("Failed to set control id={:x} value={} on device: {}, {}", control_id, setting.value, get_config().device, errno);
+        spdlog::warn("Failed to set control id={:x} value={} on device: {}, {}", control_id, setting.value, get_config().v4l2.device, errno);
         return;
     }
-    spdlog::info("Set control id={:x} value={} on device: {}", control_id, setting.value, get_config().device);
+    spdlog::info("Set control id={:x} value={} on device: {}", control_id, setting.value, get_config().v4l2.device);
 }
 
 uint32_t V4L2Camera::_find_control_id(const std::string& name) const {
@@ -222,7 +222,7 @@ uint32_t V4L2Camera::_find_control_id(const std::string& name) const {
             const std::string control_name = _get_ctrl_name(control_id);
             spdlog::info("Queried control '{}' (id={:x})", control_name, control_id);
             if (name == control_name) {
-                spdlog::info("Found control '{}' (id={:x}) for device: {}", control_name, control_id, get_config().device);
+                spdlog::info("Found control '{}' (id={:x}) for device: {}", control_name, control_id, get_config().v4l2.device);
                 return control_id;
             }
         }
@@ -240,22 +240,22 @@ std::string V4L2Camera::_get_ctrl_name(uint32_t ctrl_id) const {
         std::transform(ctrl_name.begin(), ctrl_name.end(), ctrl_name.begin(), ::tolower);
         std::replace(ctrl_name.begin(), ctrl_name.end(), ' ', '_');
         ctrl_name.erase(std::remove(ctrl_name.begin(), ctrl_name.end(), ','), ctrl_name.end());
-        spdlog::info("Queried control name '{}' for id={:x} on device: {}", ctrl_name, ctrl_id, get_config().device);
+        spdlog::info("Queried control name '{}' for id={:x} on device: {}", ctrl_name, ctrl_id, get_config().v4l2.device);
         return ctrl_name;
     }
 
-    spdlog::warn("Failed to query control name for id={:x} on device: {}, {}", ctrl_id, get_config().device, errno);
+    spdlog::warn("Failed to query control name for id={:x} on device: {}, {}", ctrl_id, get_config().v4l2.device, errno);
     return "";
 }
 
 bool V4L2Camera::_init_mmap() {
     struct v4l2_requestbuffers req{};
-    req.count = get_config().req_buffer_count;
+    req.count = get_config().v4l2.req_buffer_count;
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
 
     if (ioctl(_file_desc, VIDIOC_REQBUFS, &req) < 0) {
-        spdlog::warn("Failed to request buffers for device: {}, {}", get_config().device, errno);
+        spdlog::warn("Failed to request buffers for device: {}, {}", get_config().v4l2.device, errno);
         return false;
     }
 
@@ -267,7 +267,7 @@ bool V4L2Camera::_init_mmap() {
         buf.index = index;
 
         if (ioctl(_file_desc, VIDIOC_QUERYBUF, &buf) < 0) {
-            spdlog::warn("Failed to query buffer for device: {}, {}", get_config().device, errno);
+            spdlog::warn("Failed to query buffer for device: {}, {}", get_config().v4l2.device, errno);
             return false;
         }
 
@@ -283,7 +283,7 @@ bool V4L2Camera::_init_mmap() {
 
         // Queue buffer for capture
         if (ioctl(_file_desc, VIDIOC_QBUF, &buf) < 0) {
-            spdlog::warn("Failed to queue buffer for device: {}, {}", get_config().device, errno);
+            spdlog::warn("Failed to queue buffer for device: {}, {}", get_config().v4l2.device, errno);
             return false;
         }
     }
@@ -301,7 +301,7 @@ void V4L2Camera::_capture_loop() {
         constexpr int POLL_TIMEOUT_MS = 100;
         int const ret = poll(&pfd, 1, POLL_TIMEOUT_MS);
         if (ret < 0) {
-            spdlog::warn("Poll error for device: {}, {}", get_config().device, errno);
+            spdlog::warn("Poll error for device: {}, {}", get_config().v4l2.device, errno);
             break;
         }
         if (ret == 0) {
@@ -321,7 +321,7 @@ void V4L2Camera::_capture_loop() {
             if (keep) {
                 const bool use_v4l2_timestamp = has_monotonic_v4l2_timestamp(buf);
                 if (!use_v4l2_timestamp) {
-                    spdlog::warn("Skipping camera frame for {} without monotonic V4L2 timestamp", get_config().device);
+                    spdlog::warn("Skipping camera frame for {} without monotonic V4L2 timestamp", get_config().v4l2.device);
                     continue;
                 }
 
@@ -329,11 +329,11 @@ void V4L2Camera::_capture_loop() {
             }
 
             if (ioctl(_file_desc, VIDIOC_QBUF, &buf) < 0) {
-                spdlog::warn("Failed to re-queue buffer for device: {}, {}", get_config().device, errno);
+                spdlog::warn("Failed to re-queue buffer for device: {}, {}", get_config().v4l2.device, errno);
                 break;
             }
         } else {
-            spdlog::warn("Failed to dequeue buffer for device: {}, {}", get_config().device, errno);
+            spdlog::warn("Failed to dequeue buffer for device: {}, {}", get_config().v4l2.device, errno);
             break;
         }
     }

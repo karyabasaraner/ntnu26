@@ -1,6 +1,6 @@
 #include "camera_module.hpp"
+#include "camera_factory.hpp"
 #include "configs.hpp"
-#include "v4l2_camera.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -61,8 +61,9 @@ void CameraModule::stop_cameras(size_t index) {
 
 void CameraModule::_initialize_cameras() {
     for (const CameraConfig& cam_config : _config.get_config().cameras) {
-        spdlog::info("Initializing camera: {}", cam_config.device);
-        _cameras.push_back(std::make_unique<V4L2Camera>(cam_config));
+        const char* backend = cam_config.backend == CameraBackend::pylon ? "pylon" : "v4l2";
+        spdlog::info("Initializing {} camera: {}", backend, cam_config.name);
+        _cameras.push_back(create_camera(cam_config));
     }
 }
 

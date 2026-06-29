@@ -32,12 +32,12 @@ bool Camera::start() {
     } catch (const std::system_error& error) {
         _running = false;
         _stop_acquisition();
-        spdlog::error("Failed to start capture thread for camera {}: {}", _config.device, error.what());
+        spdlog::error("Failed to start capture thread for camera {}: {}", _config.name, error.what());
         return false;
     }
 
     _state = State::running;
-    spdlog::info("Started streaming for camera: {}", _config.device);
+    spdlog::info("Started streaming for camera: {}", _config.name);
     return true;
 }
 
@@ -47,17 +47,17 @@ void Camera::stop() noexcept {
         return;
     }
 
-    spdlog::info("Stopping camera: {}", _config.device);
+    spdlog::info("Stopping camera: {}", _config.name);
     _running = false;
 
     if (_state == State::running && !_stop_acquisition()) {
-        spdlog::warn("Failed to stop acquisition for camera: {}", _config.device);
+        spdlog::warn("Failed to stop acquisition for camera: {}", _config.name);
     }
 
     if (_worker.joinable()) {
         _worker.join();
     }
-    spdlog::info("Stopped capture thread for camera: {}", _config.device);
+    spdlog::info("Stopped capture thread for camera: {}", _config.name);
 
     _post_stop();
     _state = State::stopped;
