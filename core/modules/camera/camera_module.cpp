@@ -1,6 +1,6 @@
 #include "camera_module.hpp"
-#include "v4l2_camera.hpp"
 #include "configs.hpp"
+#include "v4l2_camera.hpp"
 
 #include <cstddef>
 #include <cstdint>
