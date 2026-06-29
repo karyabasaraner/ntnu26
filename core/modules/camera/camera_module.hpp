@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "../utils/configs.hpp"
-#include "camera.hpp"
+#include "v4l2_camera.hpp"
 
 namespace core {
 
@@ -26,7 +26,7 @@ public:
 
 private:
     Config _config;
-    std::vector<std::unique_ptr<Camera>> _cameras;
+    std::vector<std::unique_ptr<V4L2Camera>> _cameras;
 
     void _initialize_cameras();
 };

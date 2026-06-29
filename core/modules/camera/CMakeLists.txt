@@ -1,7 +1,7 @@
 project(camera_module LANGUAGES CXX)
 
 # Camera module
-add_library(camera_module SHARED camera_module.cpp camera.cpp)
+add_library(camera_module SHARED camera_module.cpp v4l2_camera.cpp)
 target_include_directories(camera_module PUBLIC ${CMAKE_SOURCE_DIR}/core/utils)
 
 target_link_libraries(camera_module PUBLIC core_utils_configs)

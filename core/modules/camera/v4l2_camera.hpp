@@ -1,5 +1,5 @@
-#ifndef WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_HPP
-#define WORKSPACES_CORE_CORE_MODULES_CAMERA_CAMERA_HPP
+#ifndef WORKSPACES_CORE_CORE_MODULES_CAMERA_V4L2CAMERA_HPP
+#define WORKSPACES_CORE_CORE_MODULES_CAMERA_V4L2CAMERA_HPP
 
 #include "../utils/configs.hpp"
 #include "../shared_memory/client/writer.hpp"
@@ -14,18 +14,18 @@
 
 namespace core {
 
-class Camera {
+class V4L2Camera {
 public:
-    explicit Camera(CameraConfig config);
+    explicit V4L2Camera(CameraConfig config);
 
     // Delete copy and move
-    Camera(const Camera&) = delete;
-    Camera& operator=(const Camera&) = delete;
-    Camera(Camera&&) = delete;
-    Camera& operator=(Camera&&) = delete;
+    V4L2Camera(const V4L2Camera&) = delete;
+    V4L2Camera& operator=(const V4L2Camera&) = delete;
+    V4L2Camera(V4L2Camera&&) = delete;
+    V4L2Camera& operator=(V4L2Camera&&) = delete;
 
     // Destructor
-    ~Camera();
+    ~V4L2Camera();
 
     bool is_running() const { return _running; }
     bool is_valid() const { return _file_desc >= 0; };

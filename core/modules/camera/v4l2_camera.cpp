@@ -1,4 +1,4 @@
-#include "camera.hpp"
+#include "v4l2_camera.hpp"
 
 #include "../utils/configs.hpp"
 
@@ -43,12 +43,12 @@ bool has_monotonic_v4l2_timestamp(const v4l2_buffer& buffer) {
 
 } // namespace
 
-const std::unordered_map<std::string, uint32_t> Camera::FOURCC_FORMATS = {
+const std::unordered_map<std::string, uint32_t> V4L2Camera::FOURCC_FORMATS = {
     {"NV16", V4L2_PIX_FMT_NV16},
     {"UYVY", V4L2_PIX_FMT_UYVY}
 };
 
-Camera::Camera(CameraConfig config) : _config(std::move(config)), _shdict_writer(_config.name, _config.writer) {
+V4L2Camera::V4L2Camera(CameraConfig config) : _config(std::move(config)), _shdict_writer(_config.name, _config.writer) {
     _open_device();
 
     if (!is_valid()) {
@@ -62,12 +62,12 @@ Camera::Camera(CameraConfig config) : _config(std::move(config)), _shdict_writer
     }
 }
 
-Camera::~Camera() {
+V4L2Camera::~V4L2Camera() {
     // NOTE: This closes the device and stops the capture thread if still running
     stop();
 }
 
-bool Camera::start() {
+bool V4L2Camera::start() {
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(_file_desc, VIDIOC_STREAMON, &type) < 0) {
         spdlog::warn("Failed to start streaming: {}, {}", _config.device, errno);
@@ -76,11 +76,11 @@ bool Camera::start() {
 
     _running = true;
     spdlog::info("Started streaming for camera: {}", _config.device);
-    _worker = std::thread(&Camera::_capture_loop, this);
+    _worker = std::thread(&V4L2Camera::_capture_loop, this);
     return true;
 }
 
-void Camera::stop() {
+void V4L2Camera::stop() {
     spdlog::info("Stopping camera: {}", _config.device);
     _running = false;
 
@@ -104,7 +104,7 @@ void Camera::stop() {
 }
 
 
-bool Camera::_open_device() {
+bool V4L2Camera::_open_device() {
     if (is_valid()) {
         spdlog::info("Camera already open: {}", _config.device);
         return true;
@@ -124,7 +124,7 @@ bool Camera::_open_device() {
     return true;
 }
 
-bool Camera::_close_device() {
+bool V4L2Camera::_close_device() {
     if (!is_valid()) {
         spdlog::info("Camera device already closed: {}", _config.device);
         return true;
@@ -139,7 +139,7 @@ bool Camera::_close_device() {
     return true;
 }
 
-bool Camera::_configure() const {
+bool V4L2Camera::_configure() const {
     struct v4l2_format fmt{};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
@@ -237,7 +237,7 @@ bool Camera::_configure() const {
     return true;
 }
 
-std::string Camera::_get_ctrl_name(uint32_t ctrl_id) const {
+std::string V4L2Camera::_get_ctrl_name(uint32_t ctrl_id) const {
     struct v4l2_queryctrl queryctrl {};
     queryctrl.id = ctrl_id;
 
@@ -255,7 +255,7 @@ std::string Camera::_get_ctrl_name(uint32_t ctrl_id) const {
     return "";
 }
 
-bool Camera::_init_mmap() {
+bool V4L2Camera::_init_mmap() {
     struct v4l2_requestbuffers req{};
     req.count = _config.req_buffer_count;
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -298,7 +298,7 @@ bool Camera::_init_mmap() {
     return true;
 }
 
-void Camera::_capture_loop() {
+void V4L2Camera::_capture_loop() {
     struct pollfd pfd{};
     pfd.fd = _file_desc;
     pfd.events = POLLIN;
@@ -339,7 +339,7 @@ void Camera::_capture_loop() {
     }
 }
 
-void Camera::_process_frame(void* data, size_t length, uint32_t sequence, uint64_t timestamp_ns) {
+void V4L2Camera::_process_frame(void* data, size_t length, uint32_t sequence, uint64_t timestamp_ns) {
     // NOTE: Copy as quickly as possible to free this thread for the next frame
     _shdict_writer.add(_config.name, data, length, sequence, timestamp_ns);
 }
