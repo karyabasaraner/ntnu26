@@ -52,7 +52,7 @@ const std::unordered_map<std::string, uint32_t> V4L2Camera::FOURCC_FORMATS = {
 V4L2Camera::V4L2Camera(CameraConfig config) : Camera(std::move(config)) {
     _open_device();
 
-    if (!is_valid()) {
+    if (_file_desc < 0) {
         return;
     }
 
@@ -63,11 +63,17 @@ V4L2Camera::V4L2Camera(CameraConfig config) : Camera(std::move(config)) {
     }
 }
 
-void V4L2Camera::_post_stop() {
-    if (is_valid()) {
-        for (const auto buffer : _buffers) {
-            munmap(buffer.start, buffer.length);
-        }
+V4L2Camera::~V4L2Camera() {
+    stop();
+}
+
+void V4L2Camera::_post_stop() noexcept {
+    for (const auto buffer : _buffers) {
+        munmap(buffer.start, buffer.length);
+    }
+    _buffers.clear();
+
+    if (_file_desc >= 0) {
         _close_device();
     }
 }
@@ -81,7 +87,7 @@ bool V4L2Camera::_start_acquisition() {
     return true;
 }
 
-bool V4L2Camera::_stop_acquisition() {
+bool V4L2Camera::_stop_acquisition() noexcept {
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(_file_desc, VIDIOC_STREAMOFF, &type) < 0) {
         spdlog::warn("Failed to stop streaming: {}, {}", get_config().device, errno);
@@ -92,7 +98,7 @@ bool V4L2Camera::_stop_acquisition() {
 
 
 bool V4L2Camera::_open_device() {
-    if (is_valid()) {
+    if (_file_desc >= 0) {
         spdlog::info("Camera already open: {}", get_config().device);
         return true;
     }
@@ -112,7 +118,7 @@ bool V4L2Camera::_open_device() {
 }
 
 bool V4L2Camera::_close_device() {
-    if (!is_valid()) {
+    if (_file_desc < 0) {
         spdlog::info("Camera device already closed: {}", get_config().device);
         return true;
     }
@@ -127,6 +133,16 @@ bool V4L2Camera::_close_device() {
 }
 
 bool V4L2Camera::_configure() const {
+    if (!_configure_format()) {
+        return false;
+    }
+
+    _configure_fps();
+    _configure_settings();
+    return true;
+}
+
+bool V4L2Camera::_configure_format() const {
     struct v4l2_format fmt{};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
@@ -140,88 +156,78 @@ bool V4L2Camera::_configure() const {
         return false;
     }
     spdlog::info("Configured camera device: {}", get_config().device);
-
-    // Try to set FPS if requested via config
-    if (get_config().fps > 0) {
-        struct v4l2_streamparm sparm{};
-        sparm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-        // First query current parameters and capabilities
-        if (ioctl(_file_desc, VIDIOC_G_PARM, &sparm) == 0) {
-            if ((sparm.parm.capture.capability & V4L2_CAP_TIMEPERFRAME) == 0) {
-                spdlog::info("Driver does not expose timeperframe; cannot set FPS for device: {}", get_config().device);
-            } else {
-                // timeperframe = numerator/denominator seconds per frame; FPS = denominator/numerator
-                sparm.parm.capture.timeperframe.numerator = 1;
-                sparm.parm.capture.timeperframe.denominator = get_config().fps; // integer FPS from config
-
-                if (ioctl(_file_desc, VIDIOC_S_PARM, &sparm) < 0) {
-                    spdlog::warn("Failed to set FPS={} on device: {}, {}", get_config().fps, get_config().device, errno);
-                } else {
-                    // Read back actual value the driver accepted
-                    if (ioctl(_file_desc, VIDIOC_G_PARM, &sparm) == 0 && sparm.parm.capture.timeperframe.numerator != 0) {
-                        const double actual_fps = static_cast<double>(sparm.parm.capture.timeperframe.denominator) / static_cast<double>(sparm.parm.capture.timeperframe.numerator);
-                        spdlog::info("Requested FPS={} -> actual {:.2f} for device: {}", get_config().fps, actual_fps, get_config().device);
-                    } else {
-                        spdlog::info("Requested FPS={} for device: {} (could not verify actual)", get_config().fps, get_config().device);
-                    }
-                }
-            }
-        } else {
-            spdlog::warn("VIDIOC_G_PARM unsupported; cannot set FPS for device: {}, {}", get_config().device, errno);
-        }
-    }
-
-    // Apply settings
-    for (const auto& setting : get_config().settings) {
-        // Shortcut: if a control id is provided, use it directly
-        if (setting.id != 0) {
-            struct v4l2_control ctrl {};
-            ctrl.id = setting.id;
-            ctrl.value = setting.value;
-
-            if (ioctl(_file_desc, VIDIOC_S_CTRL, &ctrl) < 0) {
-                spdlog::warn("Failed to set control id={:x} value={} on device: {}, {}", setting.id, setting.value, get_config().device, errno);
-            } else {
-                spdlog::info("Set control id={:x} value={} on device: {}", setting.id, setting.value, get_config().device);
-            }
-            continue;
-        }
-
-        // Fallback: discover control by name
-        struct v4l2_queryctrl queryctrl {};
-
-        memset(&queryctrl, 0, sizeof(queryctrl));
-        strncpy(reinterpret_cast<char*>(queryctrl.name), setting.name.c_str(), sizeof(queryctrl.name) - 1);
-
-        bool found = false;
-        for (queryctrl.id = V4L2_CID_BASE; queryctrl.id < V4L2_CID_LASTP1; queryctrl.id++) {
-            if (ioctl(_file_desc, VIDIOC_QUERYCTRL, &queryctrl) == 0) {
-                std::string ctrl_name = _get_ctrl_name(queryctrl.id);
-                spdlog::info("Queried control '{}' (id={:x})", ctrl_name, queryctrl.id);
-                if (setting.name == ctrl_name) {
-                    found = true;
-                    spdlog::info("Found control '{}' (id={:x}) for device: {}", ctrl_name, queryctrl.id, get_config().device);
-                    break;
-                }
-            }
-        }
-        if (!found) {
-            spdlog::warn("Control '{}' not found on device: {}", setting.name, get_config().device);
-            continue;
-        }
-
-        struct v4l2_control ctrl {};
-        ctrl.id = queryctrl.id;
-        ctrl.value = setting.value;
-
-        if (ioctl(_file_desc, VIDIOC_S_CTRL, &ctrl) < 0) {
-            spdlog::warn("Failed to set control '{}'={} on device: {}, {}", setting.name, setting.value, get_config().device, errno);
-        } else {
-            spdlog::info("Set control '{}'={} on device: {}", setting.name, setting.value, get_config().device);
-        }
-    }
     return true;
+}
+
+void V4L2Camera::_configure_fps() const {
+    if (get_config().fps == 0) {
+        return;
+    }
+
+    struct v4l2_streamparm stream_parameters{};
+    stream_parameters.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    if (ioctl(_file_desc, VIDIOC_G_PARM, &stream_parameters) < 0) {
+        spdlog::warn("VIDIOC_G_PARM unsupported; cannot set FPS for device: {}, {}", get_config().device, errno);
+        return;
+    }
+    if ((stream_parameters.parm.capture.capability & V4L2_CAP_TIMEPERFRAME) == 0) {
+        spdlog::info("Driver does not expose timeperframe; cannot set FPS for device: {}", get_config().device);
+        return;
+    }
+
+    stream_parameters.parm.capture.timeperframe.numerator = 1;
+    stream_parameters.parm.capture.timeperframe.denominator = get_config().fps;
+    if (ioctl(_file_desc, VIDIOC_S_PARM, &stream_parameters) < 0) {
+        spdlog::warn("Failed to set FPS={} on device: {}, {}", get_config().fps, get_config().device, errno);
+        return;
+    }
+
+    if (ioctl(_file_desc, VIDIOC_G_PARM, &stream_parameters) == 0 && stream_parameters.parm.capture.timeperframe.numerator != 0) {
+        const double actual_fps = static_cast<double>(stream_parameters.parm.capture.timeperframe.denominator)
+            / static_cast<double>(stream_parameters.parm.capture.timeperframe.numerator);
+        spdlog::info("Requested FPS={} -> actual {:.2f} for device: {}", get_config().fps, actual_fps, get_config().device);
+        return;
+    }
+    spdlog::info("Requested FPS={} for device: {} (could not verify actual)", get_config().fps, get_config().device);
+}
+
+void V4L2Camera::_configure_settings() const {
+    for (const auto& setting : get_config().settings) {
+        _configure_setting(setting);
+    }
+}
+
+void V4L2Camera::_configure_setting(const SettingsConfig& setting) const {
+    uint32_t const control_id = setting.id != 0 ? setting.id : _find_control_id(setting.name);
+    if (control_id == 0) {
+        spdlog::warn("Control '{}' not found on device: {}", setting.name, get_config().device);
+        return;
+    }
+
+    struct v4l2_control control {};
+    control.id = control_id;
+    control.value = setting.value;
+    if (ioctl(_file_desc, VIDIOC_S_CTRL, &control) < 0) {
+        spdlog::warn("Failed to set control id={:x} value={} on device: {}, {}", control_id, setting.value, get_config().device, errno);
+        return;
+    }
+    spdlog::info("Set control id={:x} value={} on device: {}", control_id, setting.value, get_config().device);
+}
+
+uint32_t V4L2Camera::_find_control_id(const std::string& name) const {
+    for (uint32_t control_id = V4L2_CID_BASE; control_id < V4L2_CID_LASTP1; ++control_id) {
+        struct v4l2_queryctrl query_control {};
+        query_control.id = control_id;
+        if (ioctl(_file_desc, VIDIOC_QUERYCTRL, &query_control) == 0) {
+            const std::string control_name = _get_ctrl_name(control_id);
+            spdlog::info("Queried control '{}' (id={:x})", control_name, control_id);
+            if (name == control_name) {
+                spdlog::info("Found control '{}' (id={:x}) for device: {}", control_name, control_id, get_config().device);
+                return control_id;
+            }
+        }
+    }
+    return 0;
 }
 
 std::string V4L2Camera::_get_ctrl_name(uint32_t ctrl_id) const {
@@ -292,9 +298,16 @@ void V4L2Camera::_capture_loop() {
 
     const uint32_t subsample = get_config().subsample_factor > 0 ? get_config().subsample_factor : 1;
     while (is_running()) {
-        int const ret = poll(&pfd, 1, -1);
+        constexpr int POLL_TIMEOUT_MS = 100;
+        int const ret = poll(&pfd, 1, POLL_TIMEOUT_MS);
         if (ret < 0) {
             spdlog::warn("Poll error for device: {}, {}", get_config().device, errno);
+            break;
+        }
+        if (ret == 0) {
+            continue;
+        }
+        if (!is_running()) {
             break;
         }
 

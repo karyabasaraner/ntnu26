@@ -1,38 +1,56 @@
 #include "base_camera.hpp"
 
-#include <spdlog/spdlog.h>
 #include "configs.hpp"
-#include <utility>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
+#include <system_error>
+#include <utility>
+
+#include <spdlog/spdlog.h>
 
 namespace core {
 
 Camera::Camera(CameraConfig config) : _config(std::move(config)), _shdict_writer(_config.name, _config.writer) {}
 
-Camera::~Camera() {
-    if (_running) {
-        stop();
-    }
-}
-
 bool Camera::start() {
+    std::lock_guard<std::mutex> const lock(_state_mutex);
+    if (_state != State::initialized || !is_valid()) {
+        return false;
+    }
+
     if (!_start_acquisition()) {
         return false;
     }
 
     _running = true;
-    spdlog::info("Started streaming for camera: {}", _config.device);
-    _worker = std::thread(&Camera::_capture_loop, this);
+    try {
+        _worker = std::thread([this] {
+            _capture_loop();
+            _running = false;
+        });
+    } catch (const std::system_error& error) {
+        _running = false;
+        _stop_acquisition();
+        spdlog::error("Failed to start capture thread for camera {}: {}", _config.device, error.what());
+        return false;
+    }
 
+    _state = State::running;
+    spdlog::info("Started streaming for camera: {}", _config.device);
     return true;
 }
 
-void Camera::stop() {
+void Camera::stop() noexcept {
+    std::lock_guard<std::mutex> const lock(_state_mutex);
+    if (_state == State::stopped) {
+        return;
+    }
+
     spdlog::info("Stopping camera: {}", _config.device);
     _running = false;
 
-    if (!_stop_acquisition()) {
+    if (_state == State::running && !_stop_acquisition()) {
         spdlog::warn("Failed to stop acquisition for camera: {}", _config.device);
     }
 
@@ -41,25 +59,13 @@ void Camera::stop() {
     }
     spdlog::info("Stopped capture thread for camera: {}", _config.device);
 
-    // TODO(MJ): Is this the nicest way to do this?
     _post_stop();
+    _state = State::stopped;
 }
 
 void Camera::process_frame(void* data, size_t length, uint32_t sequence, uint64_t timestamp_ns) {
     // NOTE: Copy as quickly as possible to free this thread for the next frame
     _shdict_writer.add(_config.name, data, length, sequence, timestamp_ns);
 }
-
-bool Camera::_start_acquisition() {
-    // Empty implementation in base class; can be overridden in derived classes for pre-start actions
-    return true;
-}
-
-bool Camera::_stop_acquisition() {
-    // Empty implementation in base class; can be overridden in derived classes for post-stop actions
-    return true;
-}
-
-
 
 } // namespace core

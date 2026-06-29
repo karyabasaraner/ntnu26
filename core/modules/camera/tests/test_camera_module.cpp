@@ -7,6 +7,8 @@
 #include "../../shared_memory/master.hpp"
 #include "../../shared_memory/utils.hpp"
 #include "../camera_module.hpp"
+#include "../v4l2_camera.hpp"
+#include "configs.hpp"
 
 const std::string TEST_CONFIG_PATH = "ci/configs/ci-four-cameras.yaml";
 
@@ -18,6 +20,23 @@ TEST(CameraModuleTest, InitializeCameras) {
 
     // THEN: 4 cameras are initialized
     EXPECT_EQ(camera_module.get_num_cameras(), 4);
+}
+
+TEST(CameraModuleTest, DestructionWithoutStartReleasesCameraDevice) {
+    // GIVEN: A valid camera configuration
+    core::Config config;
+    config.load(TEST_CONFIG_PATH);
+    const core::CameraConfig camera_config = config.get_config().cameras.front();
+
+    // WHEN: A camera is initialized and destroyed without being started
+    {
+        const core::V4L2Camera camera(camera_config);
+        ASSERT_TRUE(camera.is_valid());
+    }
+
+    // THEN: Another camera can immediately open the same device
+    const core::V4L2Camera reopened_camera(camera_config);
+    EXPECT_TRUE(reopened_camera.is_valid());
 }
 
 TEST(CameraModuleTest, StartStopCameras) {

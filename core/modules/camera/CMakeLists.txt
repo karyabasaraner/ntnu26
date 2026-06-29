@@ -10,7 +10,9 @@ target_link_libraries(camera_module PUBLIC shared_memory)
 target_compile_options(core_utils_configs PRIVATE -fPIC) # TODO: WHy is this needed?
 
 if(ENABLE_TESTING)
-    add_executable(test_camera_module tests/test_camera_module.cpp)
+    add_executable(test_camera_module
+                   tests/test_base_camera.cpp
+                   tests/test_camera_module.cpp)
 
     set_target_properties(test_camera_module PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
