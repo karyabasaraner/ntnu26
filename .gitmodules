@@ -1,9 +1,9 @@
 [submodule "config_utilities"]
 	path = third-party/config_utilities
-	url = git@github.com:marcojob/config_utilities.git
+	url = git@git.ntnu.no:ntnu-frl/config_utilities.git
 [submodule "third-party/libiio"]
 	path = third-party/libiio
-	url = git@github.com:marcojob/libiio.git
+	url = git@git.ntnu.no:ntnu-frl/libiio.git
 [submodule "third-party/mcap_builder"]
 	path = third-party/mcap_builder
-	url = git@github.com:marcojob/mcap_builder.git
+	url = git@git.ntnu.no:ntnu-frl/mcap_builder.git
