@@ -62,6 +62,27 @@ struct CameraConfig {
     WriterConfig writer;
 };
 
+enum class EventCameraBackend : uint8_t {
+    none,
+    prophesee,
+};
+
+struct PropheseeCameraConfig {
+    std::string bias_file;    // Optional path to a Metavision .bias file; empty keeps sensor defaults
+    std::string serial_number; // Empty selects the first available Prophesee camera
+};
+
+struct EventCameraConfig {
+    EventCameraBackend backend{EventCameraBackend::none};
+    size_t height{0};
+    // Capacity of one published shared-memory frame, in events. A single acquisition
+    // batch larger than this is split across multiple frames; no events are dropped.
+    uint32_t max_events_per_frame{0};
+    std::string name;
+    PropheseeCameraConfig prophesee;
+    size_t width{0};
+};
+
 struct IMUConfig {
     float sampling_frequency;
     float scale;
@@ -75,12 +96,15 @@ struct IMUConfig {
 
 struct RootConfig {
     std::vector<CameraConfig> cameras;
+    std::vector<EventCameraConfig> event_cameras;
     std::vector<IMUConfig> imus;
     std::vector<RingBufferConfig> shared_memory;
 };
 
 void declare_config(CameraConfig& config);
+void declare_config(EventCameraConfig& config);
 void declare_config(IMUConfig& config);
+void declare_config(PropheseeCameraConfig& config);
 void declare_config(PylonCameraConfig& config);
 void declare_config(RootConfig& config);
 void declare_config(V4L2CameraConfig& config);

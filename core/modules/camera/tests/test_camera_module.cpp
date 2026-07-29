@@ -11,6 +11,26 @@
 #include "configs.hpp"
 
 const std::string TEST_CONFIG_PATH = "ci/configs/ci-four-cameras.yaml";
+const std::string TEST_CONFIG_PATH_ONE_BROKEN = "ci/configs/ci-four-cameras-one-broken.yaml";
+
+TEST(CameraModuleTest, SurvivesOneCameraFailingToInitialize) {
+    // GIVEN: A config declares 4 cameras, one of which has an unsupported v4l2 format
+    // and will throw while initializing
+
+    // WHEN: Camera module is initialized
+    core::CameraModule camera_module(TEST_CONFIG_PATH_ONE_BROKEN);
+
+    // THEN: All 4 camera slots are accounted for, and starting the module only starts
+    // the 3 cameras that initialized successfully; the broken one does not take the
+    // rest of the module down with it
+    EXPECT_EQ(camera_module.get_num_cameras(), 4);
+
+    camera_module.start_cameras();
+    EXPECT_EQ(camera_module.get_running_cameras(), 3);
+
+    camera_module.stop_cameras();
+    EXPECT_EQ(camera_module.get_running_cameras(), 0);
+}
 
 TEST(CameraModuleTest, InitializeCameras) {
     // GIVEN: A config declares 4 cameras

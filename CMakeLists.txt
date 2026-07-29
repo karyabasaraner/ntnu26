@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 project(Core LANGUAGES CXX)
 
 option(ENABLE_PYLON "Build support for Basler Pylon GigE cameras" OFF)
+option(ENABLE_METAVISION "Build support for Prophesee event cameras via the Metavision SDK" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -34,6 +35,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/third_party.cmake)
 # Core/modules
 add_subdirectory(core/utils)
 add_subdirectory(core/modules/camera)
+add_subdirectory(core/modules/event_camera)
 add_subdirectory(core/modules/imu)
 add_subdirectory(core/modules/shared_memory)
 add_subdirectory(core/python/bindings)
@@ -55,7 +57,7 @@ target_include_directories(core-main PRIVATE ${CMAKE_SOURCE_DIR}/core)
 target_include_directories(core-log PRIVATE ${CMAKE_SOURCE_DIR}/core)
 
 # Link against the module libraries (camera_module pulls shared_memory transitively)
-target_link_libraries(core-main PRIVATE camera_module imu_module Threads::Threads)
+target_link_libraries(core-main PRIVATE camera_module event_camera_module imu_module Threads::Threads)
 target_link_libraries(core-log PRIVATE shared_memory Threads::Threads)
 
 # Optional: put binary at build/ instead of nested dir

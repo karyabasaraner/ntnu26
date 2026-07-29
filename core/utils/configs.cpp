@@ -86,6 +86,25 @@ void declare_config(CameraConfig& config) {
     config::check(config.writer.height, config::CheckMode::GT, static_cast<std::size_t>(0), "writer.height");
 }
 
+void declare_config(PropheseeCameraConfig& config) {
+    config::name("PropheseeCameraConfig");
+    config::field(config.bias_file, "bias_file", "Optional path to a Metavision .bias file; empty keeps sensor defaults");
+    config::field(config.serial_number, "serial_number", "Serial number of the Prophesee camera; empty selects the first available one");
+}
+
+void declare_config(EventCameraConfig& config) {
+    config::name("EventCameraConfig");
+    config::field(config.height, "height", "Sensor height in pixels");
+    config::field(config.max_events_per_frame, "max_events_per_frame", "Maximum number of events per published shared-memory frame");
+    config::field(config.name, "name", "Name of the event camera");
+    config::field(config.prophesee, "prophesee");
+    config::field(config.width, "width", "Sensor width in pixels");
+    config::check(config.name.size(), config::CheckMode::GT, static_cast<std::size_t>(0), "name");
+    config::check(config.width, config::CheckMode::GT, static_cast<std::size_t>(0), "width");
+    config::check(config.height, config::CheckMode::GT, static_cast<std::size_t>(0), "height");
+    config::check(config.max_events_per_frame, config::CheckMode::GT, 0U, "max_events_per_frame");
+}
+
 void declare_config(IMUConfig& config) {
     config::name("IMUConfig");
     config::field(config.writer, "writer");
@@ -108,6 +127,7 @@ void declare_config(IMUConfig& config) {
 void declare_config(RootConfig& config) {
     config::name("RootConfig");
     config::field(config.cameras, "cameras", "List of camera configurations");
+    config::field(config.event_cameras, "event_cameras", "List of event camera configurations");
     config::field(config.imus, "imus", "List of IMU configurations");
     config::field(config.shared_memory, "shared_memory", "List of shared memory configurations");
 }
@@ -129,6 +149,23 @@ void Config::load(const std::string& config_path) {
             );
         }
         _config.cameras[index].backend = has_v4l2 ? CameraBackend::v4l2 : CameraBackend::pylon;
+    }
+
+    // 'event_cameras' is a newer, optional top-level field; configs that predate it
+    // simply omit the key and get an empty list.
+    const YAML::Node event_cameras_node = root_node["event_cameras"];
+    if (event_cameras_node) {
+        if (!event_cameras_node.IsSequence() || event_cameras_node.size() != _config.event_cameras.size()) {
+            throw std::runtime_error("The 'event_cameras' field must be a sequence");
+        }
+        for (std::size_t index = 0; index < _config.event_cameras.size(); ++index) {
+            if (!event_cameras_node[index]["prophesee"].IsDefined()) {
+                throw std::runtime_error(
+                    "Event camera '" + _config.event_cameras[index].name + "' must contain a 'prophesee' configuration"
+                );
+            }
+            _config.event_cameras[index].backend = EventCameraBackend::prophesee;
+        }
     }
 
     _config = config::checkValid(_config);

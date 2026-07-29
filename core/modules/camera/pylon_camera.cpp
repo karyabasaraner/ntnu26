@@ -89,6 +89,14 @@ void set_float(GenApi::INodeMap& node_map, const char* name, double value) {
     node->SetValue(std::clamp(value, node->GetMin(), node->GetMax()));
 }
 
+int64_t read_integer_or(GenApi::INodeMap& node_map, const char* name, int64_t fallback) {
+    GenApi::CIntegerPtr const node(node_map.GetNode(name));
+    if (!node || !GenApi::IsReadable(node)) {
+        return fallback;
+    }
+    return node->GetValue();
+}
+
 uint64_t steady_time_ns() {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch()
@@ -145,7 +153,23 @@ PylonCamera::PylonCamera(CameraConfig config) : Camera(std::move(config)), _impl
 
     _impl->converter.OutputPixelFormat = Pylon::PixelType_RGB8packed;
     _impl->converter.OutputPaddingX = 0;
+    _init_timestamp_conversion();
     spdlog::info("Opened Pylon GigE camera '{}' at {}", get_config().name, pylon_config.ip_address);
+}
+
+void PylonCamera::_init_timestamp_conversion() {
+    GenApi::INodeMap& node_map = _impl->camera.GetNodeMap();
+    const int64_t tick_frequency = read_integer_or(node_map, "GevTimestampTickFrequency", 0);
+    if (tick_frequency > 0) {
+        _ns_per_tick = 1e9 / static_cast<double>(tick_frequency);
+        spdlog::info("Camera '{}' timestamp tick frequency: {} Hz", get_config().name, tick_frequency);
+        return;
+    }
+    spdlog::warn(
+        "Camera '{}' does not expose a readable GevTimestampTickFrequency; frame timestamps will fall back "
+        "to host arrival time instead of the camera's own capture clock",
+        get_config().name
+    );
 }
 
 PylonCamera::~PylonCamera() {
@@ -204,11 +228,14 @@ void PylonCamera::_capture_loop() {
             }
 
             _impl->converter.Convert(_impl->converted_image, grab_result);
+            const uint64_t timestamp_ns = _ns_per_tick > 0.0
+                ? static_cast<uint64_t>(static_cast<double>(grab_result->GetTimeStamp()) * _ns_per_tick)
+                : steady_time_ns();
             process_frame(
                 _impl->converted_image.GetBuffer(),
                 _impl->converted_image.GetImageSize(),
                 static_cast<uint32_t>(block_id),
-                steady_time_ns()
+                timestamp_ns
             );
         } catch (const GenICam::GenericException& error) {
             spdlog::error("Pylon acquisition failed for '{}': {}", get_config().name, error.GetDescription());

@@ -24,6 +24,7 @@ namespace core {
 enum StreamType : uint8_t {
     CAMERA,
     IMU,
+    EVENT_CAMERA,
 };
 
 struct SensorStream {
@@ -72,6 +73,7 @@ private:
     bool _write_entry(SensorStream& stream, const DataEntry& entry);
     bool _get_camera_payload(const DataEntry& entry, const SensorStream& stream, uint64_t timestamp_ns, std::vector<std::byte>& payload);
     static bool _get_imu_payload(const DataEntry& entry, uint64_t timestamp_ns, std::vector<std::byte>& payload);
+    static bool _get_event_camera_payload(const DataEntry& entry, uint64_t timestamp_ns, std::vector<std::byte>& payload);
 };
 
 } // namespace core

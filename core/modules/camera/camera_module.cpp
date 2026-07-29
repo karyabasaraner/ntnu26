@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <spdlog/spdlog.h>
 #include <string>
@@ -63,7 +64,14 @@ void CameraModule::_initialize_cameras() {
     for (const CameraConfig& cam_config : _config.get_config().cameras) {
         const char* backend = cam_config.backend == CameraBackend::pylon ? "pylon" : "v4l2";
         spdlog::info("Initializing {} camera: {}", backend, cam_config.name);
-        _cameras.push_back(create_camera(cam_config));
+        try {
+            _cameras.push_back(create_camera(cam_config));
+        } catch (const std::exception& error) {
+            // NOTE: A single unreachable/broken camera must not prevent the rest of the
+            // module (and the other cameras) from starting up.
+            spdlog::error("Failed to initialize {} camera '{}': {}", backend, cam_config.name, error.what());
+            _cameras.push_back(nullptr);
+        }
     }
 }
 

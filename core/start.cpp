@@ -8,6 +8,7 @@
 #include <thread>
 
 #include "modules/camera/camera_module.hpp"
+#include "modules/event_camera/event_camera_module.hpp"
 #include "modules/imu/imu_module.hpp"
 #include "modules/shared_memory/master.hpp"
 
@@ -46,6 +47,11 @@ int main(int argc, char** argv) {
         core::CameraModule cameras(config_path);
         cameras.start_cameras(); // start all cameras defined in config
 
+        // Starting event cameras
+        spdlog::info("Starting EventCameraModule with config: {}", config_path);
+        core::EventCameraModule event_cameras(config_path);
+        event_cameras.start_event_cameras(); // start all event cameras defined in config
+
         // Starting IMU
         spdlog::info("Starting IMUModule with config: {}", config_path);
         core::IMUModule imus(config_path);
@@ -59,6 +65,9 @@ int main(int argc, char** argv) {
 
         spdlog::info("Stopping IMU...");
         imus.stop_imus();
+
+        spdlog::info("Stopping event cameras...");
+        event_cameras.stop_event_cameras();
 
         spdlog::info("Stopping cameras...");
         cameras.stop_cameras();

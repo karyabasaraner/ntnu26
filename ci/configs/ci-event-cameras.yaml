@@ -1,0 +1,14 @@
+cameras: []
+imus: []
+event_cameras:
+  - name: event_left
+    width: 320
+    height: 320
+    max_events_per_frame: 2
+    prophesee:
+      serial_number: ""
+      bias_file: ""
+shared_memory:
+  - name: event_left
+    size_per_frame: 40 # EventBatchHeader(8 bytes) + 2 events * EventRecord(16 bytes)
+    num_frames: 16

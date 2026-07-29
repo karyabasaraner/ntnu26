@@ -161,6 +161,22 @@ void SharedDictLogger::_initialize_streams() {
         stream.last_status_log = std::chrono::steady_clock::time_point::min();
         _sensor_streams.push_back(std::move(stream));
     }
+
+    for (const auto& event_camera_cfg : _config.get_config().event_cameras) {
+        SensorStream stream;
+        stream.initialized = false;
+        stream.channel_id = 0;
+        stream.height = event_camera_cfg.height;
+        stream.width = event_camera_cfg.width;
+        stream.name = event_camera_cfg.name;
+        stream.reader = std::make_unique<SharedDictReader>(event_camera_cfg.name);
+        stream.type = StreamType::EVENT_CAMERA;
+        stream.current_head = 0;
+        stream.current_sequence = 0;
+        stream.num_frames = std::max<uint32_t>(1, _buffer_sizes[event_camera_cfg.name]);
+        stream.last_status_log = std::chrono::steady_clock::time_point::min();
+        _sensor_streams.push_back(std::move(stream));
+    }
 }
 
 void SharedDictLogger::_open_writer() {
@@ -190,6 +206,9 @@ void SharedDictLogger::_register_channels() {
     mcap::Schema imu_schema(ImuSchemaName, JsonSchemaEncoding, ImuSchema.data());
     _writer.addSchema(imu_schema);
 
+    mcap::Schema event_array_schema(EventArraySchemaName, JsonSchemaEncoding, EventArraySchema.data());
+    _writer.addSchema(event_array_schema);
+
     for (auto& stream : _sensor_streams) {
         if (stream.type == StreamType::CAMERA) {
             mcap::KeyValueMap const metadata{
@@ -202,6 +221,13 @@ void SharedDictLogger::_register_channels() {
             mcap::KeyValueMap const metadata{
             };
             mcap::Channel channel("/imu/" + stream.name, JsonMessageEncoding, imu_schema.id, metadata);
+            _writer.addChannel(channel);
+            stream.channel_id = channel.id;
+
+        } else if (stream.type == StreamType::EVENT_CAMERA) {
+            mcap::KeyValueMap const metadata{
+            };
+            mcap::Channel channel("/event_camera/" + stream.name, JsonMessageEncoding, event_array_schema.id, metadata);
             _writer.addChannel(channel);
             stream.channel_id = channel.id;
 
@@ -234,7 +260,8 @@ void SharedDictLogger::run() {
                     if (!made_progress) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(1));
                     }
-                    if (stream_ptr->type != StreamType::CAMERA && stream_ptr->type != StreamType::IMU) {
+                    if (stream_ptr->type != StreamType::CAMERA && stream_ptr->type != StreamType::IMU
+                        && stream_ptr->type != StreamType::EVENT_CAMERA) {
                         spdlog::warn("Unknown stream type for {}: {}", stream_ptr->name, static_cast<int>(stream_ptr->type));
                         break;
                     }
@@ -316,6 +343,47 @@ bool SharedDictLogger::_get_imu_payload(const DataEntry& entry, uint64_t timesta
     return true;
 }
 
+bool SharedDictLogger::_get_event_camera_payload(const DataEntry& entry, uint64_t timestamp_ns, std::vector<std::byte>& payload) {
+    // NOTE: This layout must match core/modules/event_camera/event_record.hpp
+    // (EventBatchHeader + EventRecord). The constants are duplicated here rather than
+    // included directly, since event_camera already depends on shared_memory and
+    // including it back would create a module cycle.
+    constexpr size_t kEventBatchHeaderSize = 8; // uint32_t num_events + uint32_t reserved
+    constexpr size_t kEventRecordSize = 16;     // int64 timestamp_ns, uint16 x, uint16 y, uint8 polarity, uint8 reserved
+
+    if (entry.data.size() < kEventBatchHeaderSize) {
+        spdlog::warn("Event camera sample too small for header: {} < {}", entry.data.size(), kEventBatchHeaderSize);
+        return false;
+    }
+
+    uint32_t num_events = 0;
+    std::memcpy(&num_events, entry.data.data(), sizeof(num_events));
+
+    const size_t records_size = static_cast<size_t>(num_events) * kEventRecordSize;
+    if (entry.data.size() < kEventBatchHeaderSize + records_size) {
+        spdlog::warn(
+            "Event camera sample too small for {} events: {} < {}",
+            num_events, entry.data.size(), kEventBatchHeaderSize + records_size
+        );
+        return false;
+    }
+
+    const std::vector<uint8_t> records(
+        entry.data.begin() + static_cast<std::ptrdiff_t>(kEventBatchHeaderSize),
+        entry.data.begin() + static_cast<std::ptrdiff_t>(kEventBatchHeaderSize + records_size)
+    );
+
+    std::ostringstream json;
+    json << '{';
+    append_timestamp_json(json, timestamp_ns);
+    json << R"(,"sequence":)" << entry.sequence << R"(,"num_events":)" << num_events;
+    append_json_string_field(json, "encoding", "core.EventRecord.v1");
+    append_json_string_field(json, "data", base64_encode(records));
+    json << '}';
+    assign_payload(payload, json.str());
+    return true;
+}
+
 bool SharedDictLogger::_write_entry(SensorStream& stream, const DataEntry& entry) {
     std::vector<std::byte> payload;
     const auto timestamp = _timestamp_mapper.to_unix_time_ns(entry.timestamp_ns);
@@ -326,6 +394,11 @@ bool SharedDictLogger::_write_entry(SensorStream& stream, const DataEntry& entry
 
     } else if (stream.type == StreamType::IMU) {
         if (!_get_imu_payload(entry, timestamp, payload)) {
+            return false;
+        }
+
+    } else if (stream.type == StreamType::EVENT_CAMERA) {
+        if (!_get_event_camera_payload(entry, timestamp, payload)) {
             return false;
         }
 

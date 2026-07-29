@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 
 
-DEFAULT_CONFIG_PATH = "configs/four-cameras.yaml"
+DEFAULT_CONFIG_PATH = "configs/basler-dart.yaml"
 DEFAULT_LOG_DIR = "/mnt/storage"
 DEFAULT_HOST = "10.147.17.18"
 DEFAULT_PORT = 8000

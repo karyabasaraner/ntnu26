@@ -58,6 +58,27 @@ cameras:
 
 imus: []
 
+# 2x Prophesee GenX320 (Metavision SDK, MIPI CSI-2). Serial numbers/bias files are
+# left blank -- fill them in once the two units' serials are known, otherwise both
+# would race to claim "the first available" camera. See hardware/README.md and the
+# hardware notes for cabling; requires ENABLE_METAVISION=ON to actually build/run
+# the Prophesee backend (see core/modules/event_camera).
+event_cameras:
+  - name: event_left
+    width: 320
+    height: 320
+    max_events_per_frame: 4096
+    prophesee:
+      serial_number: ""
+      bias_file: ""
+  - name: event_right
+    width: 320
+    height: 320
+    max_events_per_frame: 4096
+    prophesee:
+      serial_number: ""
+      bias_file: ""
+
 shared_memory:
   - name: front_left
     size_per_frame: 1166400 # 720 * 540 * 3-byte RGB output
@@ -71,3 +92,9 @@ shared_memory:
   - name: right
     size_per_frame: 1166400
     num_frames: 300
+  - name: event_left
+    size_per_frame: 65544 # EventBatchHeader(8 bytes) + 4096 events * EventRecord(16 bytes)
+    num_frames: 2000      # rough buffering capacity; actual duration depends on event rate
+  - name: event_right
+    size_per_frame: 65544
+    num_frames: 2000
