@@ -1,0 +1,56 @@
+# Phase 0 deliverable: hardware inventory for the perception module.
+#
+# Fill in serial_number for each sensor once `discover_cameras.py` has been
+# run on the Jetson with everything connected (it will rewrite this file in
+# place, preserving any fields you've already filled in by hand). All other
+# scripts in this toolkit read cameras/event cameras by serial number from
+# here -- never by enumeration order, since that is not guaranteed stable
+# across reboots or replugs.
+#
+# `label` is the physical cable/camera label you should also stick on the
+# hardware itself per the Phase 0 "label every cable and camera" task -- it's
+# not read by any script, it's just kept next to the serial for cross-checking
+# by hand.
+
+cameras:
+  - name: RGB1
+    label: ""          # e.g. "front-left" -- matches the physical label on the cable/camera
+    serial_number: ""  # filled in by discover_cameras.py
+    ip_address: ""
+    model_name: ""
+  - name: RGB2
+    label: ""
+    serial_number: ""
+    ip_address: ""
+    model_name: ""
+  - name: RGB3
+    label: ""
+    serial_number: ""
+    ip_address: ""
+    model_name: ""
+  - name: RGB4
+    label: ""
+    serial_number: ""
+    ip_address: ""
+    model_name: ""
+
+event_cameras:
+  - name: Event
+    label: ""
+    serial_number: ""
+    model_name: ""
+
+imus:
+  - name: IMU
+    label: ""
+    # IIO device identifiers + scale factors, matching the values already
+    # proven working in configs/*.yaml in the C++ core stack (BMI088 exposes
+    # accel/gyro as two separate IIO devices).
+    accel_device: "iio:device0"
+    accel_channels: ["accel_x", "accel_y", "accel_z"]
+    accel_scale: 0.000897
+    accel_sampling_frequency: 800  # Hz
+    gyro_device: "iio:device1"
+    gyro_channels: ["anglvel_x", "anglvel_y", "anglvel_z"]
+    gyro_scale: 0.001065
+    gyro_sampling_frequency: 1000  # Hz
