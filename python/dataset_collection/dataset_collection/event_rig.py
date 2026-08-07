@@ -30,9 +30,11 @@ class MultiEventRig:
     strings from discover_cameras.py (this has been seen on CSI-attached
     GenX320 pairs via the Prophesee HAL plugin), Camera.from_serial() may
     not actually distinguish them -- both could open the same physical
-    device. Verify each serial actually opens a different camera (e.g. by
-    covering one lens and checking whether that recorder's event count
-    drops to ~0) before trusting a run with both active.
+    device. Unlike GigE Baslers, covering a lens doesn't change what a CSI
+    device reports at discovery time, so verifying this needs physically
+    disconnecting one camera at a time and checking whether the reported
+    serial actually changes -- see discover_cameras.py's duplicate-serial
+    warning.
     """
 
     def __init__(self, output_dir: Path, serials: dict[str, str], bias_file: str = ""):
