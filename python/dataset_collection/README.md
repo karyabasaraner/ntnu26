@@ -52,12 +52,21 @@ Run each from `python/dataset_collection/` with the venv active.
 |---|---|---|
 | 0 | `discover_cameras.py` | fills in `config/camera_info.yaml` with detected serials |
 | 1 | `record_basler.py` | `<output>/images/000001.png ...`, `<output>/timestamps.csv` |
-| 1 | `record_event.py` | `<output>/events.raw`, `<output>/timestamps.csv` |
+| 1 | `record_event.py` | `<output>/events.raw`, `<output>/timestamps.csv` (one event camera at a time -- pass `--camera Event1` or `--camera Event2`) |
 | 1 | `record_imu.py` | `<output>/imu.csv` |
 | 2 | `record_multi_rgb.py` | `<output>/RGB1/ ... RGB4/`, `<output>/summary.json` (FPS/dropped-frame stats) |
 | 3 | `analyze_latency.py` | `<output>/latency_analysis.pdf` |
-| 4 | `record_rgb_event.py` | `<output>/RGB1/ ... RGB4/`, `<output>/Event/`, `<output>/timestamps.csv` |
-| 5 | `record.py` | `<output>/RGB1/ ... RGB4/`, `<output>/Event/`, `<output>/imu.csv`, `<output>/metadata.json` |
+| 4 | `record_rgb_event.py` | `<output>/RGB1/ ... RGB4/`, `<output>/Event1/`, `<output>/Event2/`, `<output>/timestamps.csv` |
+| 5 | `record.py` | `<output>/RGB1/ ... RGB4/`, `<output>/Event1/`, `<output>/Event2/`, `<output>/imu.csv`, `<output>/metadata.json` |
+
+**Two event cameras, not one:** the module has 2 Prophesee GenX320s
+(`Event1`/`Event2` in `camera_info.yaml`). On at least one real Jetson this
+was developed against, `discover_cameras.py` reported the *identical* serial
+string for both -- if that happens to you too, `Camera.from_serial()` may
+not actually distinguish them, meaning both could silently open the same
+physical device. `discover_cameras.py` warns about this automatically when
+it sees duplicate serials; see `dataset_collection/event_rig.py`'s docstring
+for how to check by hand (cover one lens at a time and compare).
 
 All scripts take `--config config/camera_info.yaml` (serial numbers) and
 `--output-dir <dir>` (defaults documented with `--help`). Re-running a script

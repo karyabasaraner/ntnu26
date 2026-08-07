@@ -71,6 +71,18 @@ def report_event_cameras() -> list:
         print("  none found")
     for device in event_cameras:
         print(f"  serial={device.serial_number}")
+
+    serials = [device.serial_number for device in event_cameras]
+    if len(serials) != len(set(serials)):
+        print(
+            "  WARNING: two or more event cameras reported the IDENTICAL serial string above. "
+            "This has been seen on CSI-attached GenX320 pairs via the Prophesee HAL plugin -- "
+            "Camera.from_serial() may not actually distinguish them, meaning both Event1/Event2 "
+            "could end up opening the same physical device. Try covering one lens at a time and "
+            "re-running this script to see if the identifier actually changes; if it doesn't, "
+            "this needs investigating with Prophesee's docs/support before Phase 4/5 can trust "
+            "having both event cameras active at once."
+        )
     return event_cameras
 
 

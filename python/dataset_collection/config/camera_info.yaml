@@ -35,7 +35,11 @@ cameras:
     model_name: ""
 
 event_cameras:
-  - name: Event
+  - name: Event1
+    label: ""
+    serial_number: ""
+    model_name: ""
+  - name: Event2
     label: ""
     serial_number: ""
     model_name: ""

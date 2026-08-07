@@ -26,7 +26,7 @@ from dataset_collection.event_recorder import EventCameraRecorder
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="config/camera_info.yaml")
-    parser.add_argument("--camera", default="Event", help="event camera name in camera_info.yaml")
+    parser.add_argument("--camera", default="Event1", help="event camera name in camera_info.yaml (Event1 or Event2)")
     parser.add_argument("--serial", default="", help="explicit serial number; overrides --camera lookup")
     parser.add_argument("--bias-file", default="")
     parser.add_argument("--output-dir", default="output/record_event")

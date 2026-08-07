@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""Phase 5 checkpoint: RGB + Event + IMU, one command, one shared timeline.
+"""Phase 5 checkpoint: RGB + Event(s) + IMU, one command, one shared timeline.
 
 Usage:
     python record.py --duration 10
 
 Output (in --output-dir, default "output/record"):
     dataset/RGB1/images/ ... RGB4/images/, each with its own timestamps.csv
-    dataset/Event/events.bin       -- decoded CD events (EventRecord-packed)
+    dataset/Event1/events.bin, dataset/Event2/events.bin -- decoded CD events
+                                    (EventRecord-packed)
     dataset/imu.csv                -- accel + gyro samples
     dataset/timestamps.csv         -- per-stream manifest (see record_rgb_event.py)
     dataset/metadata.json          -- session-level summary (config used,
                                        duration, per-stream counts)
+
+IMPORTANT: if your two event cameras reported identical/ambiguous serial
+numbers from discover_cameras.py, see dataset_collection/event_rig.py's
+docstring before trusting a run with both active.
 
 Every stream's timestamps share one clock domain (process monotonic clock,
 see dataset_collection/clock.py) so alignment across RGB/Event/IMU is a
@@ -25,10 +30,9 @@ import signal
 import threading
 import time
 
-from dataset_collection.dataset_writer import CsvTimestampWriter, find_camera_serial, load_yaml, make_output_dir, write_metadata
+from dataset_collection.dataset_writer import CsvTimestampWriter, load_yaml, make_output_dir, write_metadata
 from dataset_collection.clock import now_wall_iso
-from dataset_collection.event_record_io import EventRecordWriter
-from dataset_collection.event_recorder import EventBatch, EventCameraRecorder
+from dataset_collection.event_rig import MultiEventRig, resolve_event_camera_serials
 from dataset_collection.imu_recorder import ImuRecorder, ImuSample
 from dataset_collection.rgb_rig import MultiBaslerRig, resolve_camera_serials
 
@@ -36,7 +40,6 @@ from dataset_collection.rgb_rig import MultiBaslerRig, resolve_camera_serials
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="config/camera_info.yaml")
-    parser.add_argument("--event-camera", default="Event")
     parser.add_argument("--output-dir", default="output/record")
     parser.add_argument("--fps", type=float, default=30.0)
     parser.add_argument("--exposure-us", type=float, default=2000.0)
@@ -51,7 +54,7 @@ def main() -> int:
     args = parse_args()
     camera_info = load_yaml(args.config)
     rgb_serials = resolve_camera_serials(camera_info)
-    event_serial = find_camera_serial(camera_info, args.event_camera) or ""
+    event_serials = resolve_event_camera_serials(camera_info)
     imus = camera_info.get("imus", []) or []
 
     output_dir = make_output_dir(args.output_dir, "dataset")
@@ -60,19 +63,10 @@ def main() -> int:
         print("No RGB cameras with a serial_number configured; run discover_cameras.py first.")
         return 1
 
-    event_dir = output_dir / "Event"
-    event_dir.mkdir()
-    event_recorder = EventCameraRecorder(serial_number=event_serial, bias_file=args.bias_file)
-    event_writer = EventRecordWriter(event_dir / "events.bin")
-    event_bounds = {"first_ns": None, "last_ns": None}
-
-    def on_events(batch: EventBatch) -> None:
-        event_writer.write_batch(batch)
-        if batch.host_timestamp_ns.size == 0:
-            return
-        if event_bounds["first_ns"] is None:
-            event_bounds["first_ns"] = int(batch.host_timestamp_ns.min())
-        event_bounds["last_ns"] = int(batch.host_timestamp_ns.max())
+    event_rig = MultiEventRig(output_dir, event_serials, bias_file=args.bias_file)
+    if not event_rig.active_names:
+        print("No event cameras with a serial_number configured; run discover_cameras.py first.")
+        return 1
 
     accel = gyro = None
     imu_csv = None
@@ -121,10 +115,13 @@ def main() -> int:
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
-    print(f"Recording {rig.active_names} + event camera" + (" + IMU" if accel else "") + f" to {output_dir}. Ctrl+C to stop.")
+    print(
+        f"Recording {rig.active_names} + {event_rig.active_names}"
+        + (" + IMU" if accel else "") + f" to {output_dir}. Ctrl+C to stop."
+    )
     start_time = time.monotonic()
     rig.start()
-    event_recorder.stream_events(on_events)
+    event_rig.start()
     if accel is not None and gyro is not None:
         accel.start(make_on_imu_sample("accel"))
         gyro.start(make_on_imu_sample("gyro"))
@@ -133,9 +130,7 @@ def main() -> int:
         stop_event.wait(timeout=args.duration or None)
     finally:
         rig.stop()
-        event_recorder.stop()
-        event_recorder.close()
-        event_writer.close()
+        event_rig.stop()
         if accel is not None:
             accel.stop()
             accel.close()
@@ -158,14 +153,16 @@ def main() -> int:
         per_stream[name] = {"frame_count": rig.frame_count(name), "dropped_count": rig.dropped_count(name)}
         print(f"{name}: {rig.frame_count(name)} frames, {rig.dropped_count(name)} dropped")
 
-    manifest.write({
-        "stream": "Event",
-        "count": event_writer.count,
-        "first_host_ns": event_bounds["first_ns"],
-        "last_host_ns": event_bounds["last_ns"],
-    })
-    per_stream["Event"] = {"event_count": event_writer.count}
-    print(f"Event: {event_writer.count} events")
+    for name in event_rig.active_names:
+        bounds = event_rig.bounds(name)
+        manifest.write({
+            "stream": name,
+            "count": event_rig.event_count(name),
+            "first_host_ns": bounds["first_ns"],
+            "last_host_ns": bounds["last_ns"],
+        })
+        per_stream[name] = {"event_count": event_rig.event_count(name)}
+        print(f"{name}: {event_rig.event_count(name)} events")
 
     if accel is not None and gyro is not None:
         manifest.write({"stream": "IMU_accel", "count": accel.sample_count, "first_host_ns": None, "last_host_ns": None})
