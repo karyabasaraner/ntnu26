@@ -14,6 +14,15 @@ down, on the HAL `Device` object (`Camera.get_device()`), via its
     `log_raw_data(path: str) -> bool`, `start()`, `stop()`,
     `stop_log_raw_data()`. Confirmed order: log_raw_data() BEFORE start(),
     stop() BEFORE stop_log_raw_data().
+    IMPORTANT, also confirmed on-device: log_raw_data() does NOT write to
+    disk on its own in the background. Nothing lands in the file unless
+    something actively pulls buffers via `get_latest_raw_data()` (which
+    returns a `metavision_hal.RawBuffer` -- has `.size()`, not `len()`)
+    while recording is active; a plain start()-then-wait produced a fixed
+    ~248-byte header-only file regardless of real motion/events at the
+    sensor, while the same window with active polling produced ~180KB.
+    So start_raw_recording() below runs a background thread pulling
+    buffers for the whole recording duration, not just start()/stop().
 
 NOTE(verify-on-device): still unverified --
   - Bias file loading: `.biases().set_from_file(...)` doesn't exist either;
@@ -29,6 +38,8 @@ NOTE(verify-on-device): still unverified --
 """
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -64,6 +75,11 @@ class EventCameraRecorder:
         self._clock_anchor = ClockAnchor(device_ticks_to_ns=1000.0)
         self._event_count = 0
         self._running = False
+        # Raw-recording poll thread (see module note): log_raw_data() only
+        # actually writes bytes when something pulls buffers, so we have to
+        # keep pulling for the whole recording, not just start()/stop().
+        self._poll_thread: Optional[threading.Thread] = None
+        self._stop_poll = threading.Event()
 
     @property
     def event_count(self) -> int:
@@ -105,9 +121,27 @@ class EventCameraRecorder:
         # start(), so the file captures from the very first event.
         self._i_events_stream.log_raw_data(str(output_path))
         self._i_events_stream.start()
+        self._stop_poll.clear()
+        self._poll_thread = threading.Thread(target=self._poll_raw_data_loop, daemon=True)
+        self._poll_thread.start()
         self._running = True
 
+    def _poll_raw_data_loop(self) -> None:
+        # Confirmed on-device: log_raw_data() does nothing on its own --
+        # this loop is what actually drives bytes into the file. ~50Hz was
+        # chosen empirically (untested how far the poll interval can be
+        # stretched before the sensor's internal buffer -- capped around
+        # 32768 bytes in testing -- starts dropping data under heavy motion;
+        # revisit if recordings show gaps under high event rates).
+        while not self._stop_poll.is_set():
+            self._i_events_stream.get_latest_raw_data()
+            time.sleep(0.02)
+
     def stop_raw_recording(self) -> None:
+        self._stop_poll.set()
+        if self._poll_thread is not None:
+            self._poll_thread.join(timeout=2.0)
+            self._poll_thread = None
         if self._i_events_stream is not None:
             self._i_events_stream.stop()
             self._i_events_stream.stop_log_raw_data()
