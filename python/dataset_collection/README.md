@@ -36,13 +36,39 @@ that's the first thing to check on your Jetson.
 
 ## ⚠️ Verification status
 
-**None of this has been run against real hardware or the real SDKs.** It was
-written in a cloud sandbox with no Basler/Prophesee/BMI088 hardware and none
-of the three SDKs above installed -- only `numpy`/`opencv-python`/`pyyaml`
-could actually be verified as importable here. Treat every file as a
-first-draft against each vendor's documented Python API, not as tested code.
-Files with a `NOTE(verify-on-device)` comment flag a specific API call whose
-exact name/signature could not be confirmed and should be checked first.
+Most of this was written in a cloud sandbox with no Basler/Prophesee/BMI088
+hardware and none of the three SDKs above installed -- only
+`numpy`/`opencv-python`/`pyyaml` could actually be verified as importable
+there. Treat any file without a note below as a first-draft against each
+vendor's documented Python API, not as tested code. Files with a
+`NOTE(verify-on-device)` comment flag a specific API call whose exact
+name/signature could not be confirmed and should be checked first.
+
+**Verified on real hardware (Jetson + GenX320 + BMI088):**
+- `dataset_collection/event_recorder.py`'s raw recording path
+  (`start_raw_recording`/`stop_raw_recording`, used by `record_event.py`,
+  Phase 1) -- the originally-guessed API (`.cd()`, `.biases()`,
+  `.start_recording()`) didn't exist on the installed SDK at all; the real
+  API turned out to be `device.get_i_events_stream()`, and recording also
+  needed an active background poll loop (`log_raw_data()` alone writes
+  nothing to disk -- confirmed via a 248-byte header-only file vs. a
+  real ~2.5MB file for the same 5s window once polling was added). Both are
+  fixed and confirmed capturing real events on `Event1`.
+- The BMI088 IMU itself: not a bug in this toolkit, but a kernel driver crash
+  on the Jetson (unrelated HTE hardware-timestamping feature killing the
+  whole probe) blocked `record_imu.py`/`ImuRecorder` from ever seeing the
+  accelerometer/gyroscope IIO devices. Fixed at the kernel level; both
+  channels confirmed producing live physical readings (accelerometer
+  correctly reads ~1g on its vertical axis at rest).
+
+**Still unverified / known not to work yet:**
+- `event_recorder.py`'s `stream_events()` (decoded CD events, used by
+  Phase 4/5's `record_rgb_event.py`/`record.py`) -- same wrong-API problem
+  as raw recording had, not yet worked through against real hardware.
+  Raises `NotImplementedError` rather than crashing confusingly.
+- Bias file loading (`--bias-file`) -- `.biases().set_from_file(...)`
+  doesn't exist either; likely replacement is `device.get_i_ll_biases()`,
+  unconfirmed. Raises `NotImplementedError` rather than guessing.
 
 ## Phase checkpoints
 
