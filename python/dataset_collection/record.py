@@ -119,16 +119,26 @@ def main() -> int:
         f"Recording {rig.active_names} + {event_rig.active_names}"
         + (" + IMU" if accel else "") + f" to {output_dir}. Ctrl+C to stop."
     )
-    start_time = time.monotonic()
     rig.start()
     event_rig.start()
     if accel is not None and gyro is not None:
         accel.start(make_on_imu_sample("accel"))
         gyro.start(make_on_imu_sample("gyro"))
+    # Started AFTER all four start() calls above and stopped BEFORE any of
+    # the stop()/close() calls below, so this measures only the actual
+    # active recording window -- not camera/event/IMU setup or teardown
+    # time. Teardown here alone can add several seconds (RGB cameras stop
+    # sequentially, the event camera's raw-recording poll thread has a 2s
+    # join timeout, plus two more IMU stop/close calls) -- measuring across
+    # all of that would silently inflate metadata.json's duration_s to not
+    # match --duration at all (confirmed on real hardware in record_multi_rgb.py's
+    # equivalent bug: a --duration 5 run reported duration_s of 7.6s).
+    start_time = time.monotonic()
 
     try:
         stop_event.wait(timeout=args.duration or None)
     finally:
+        duration_s = max(time.monotonic() - start_time, 1e-6)
         rig.stop()
         event_rig.stop()
         if accel is not None:
@@ -139,8 +149,6 @@ def main() -> int:
             gyro.close()
         if imu_csv is not None:
             imu_csv.close()
-
-    duration_s = max(time.monotonic() - start_time, 1e-6)
 
     manifest = CsvTimestampWriter(
         output_dir / "timestamps.csv",

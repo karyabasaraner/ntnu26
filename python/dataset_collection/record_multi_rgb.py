@@ -60,17 +60,23 @@ def main() -> int:
     monitor = ResourceMonitor(interval_s=1.0)
 
     print(f"Recording {rig.active_names} to {output_dir}. Ctrl+C to stop.")
-    start_time = time.monotonic()
     monitor.start()
     rig.start()
+    # Started AFTER rig.start() (camera connect/configure) and stopped BEFORE
+    # rig.stop() (camera teardown) so this measures only the actual active
+    # recording window -- NOT setup/teardown time. basler_recorder.py's grab
+    # loop blocks up to 1s per RetrieveResult() call, and rig.stop() tears
+    # down cameras sequentially, so measuring across stop() inflated
+    # duration_s by several seconds on a 3-camera test, silently deflating
+    # every fps_achieved number below.
+    start_time = time.monotonic()
 
     try:
         stop_event.wait(timeout=args.duration or None)
     finally:
+        duration_s = max(time.monotonic() - start_time, 1e-6)
         rig.stop()
         monitor.stop()
-
-    duration_s = max(time.monotonic() - start_time, 1e-6)
 
     per_camera = {}
     total_bytes = 0
