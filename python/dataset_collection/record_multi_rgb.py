@@ -62,19 +62,20 @@ def main() -> int:
     print(f"Recording {rig.active_names} to {output_dir}. Ctrl+C to stop.")
     monitor.start()
     rig.start()
-    # Started AFTER rig.start() (camera connect/configure) and stopped BEFORE
-    # rig.stop() (camera teardown) so this measures only the actual active
-    # recording window -- NOT setup/teardown time. basler_recorder.py's grab
-    # loop blocks up to 1s per RetrieveResult() call, and rig.stop() tears
-    # down cameras sequentially, so measuring across stop() inflated
-    # duration_s by several seconds on a 3-camera test, silently deflating
-    # every fps_achieved number below.
+    # Shared "all cameras confirmed simultaneously active" window, captured
+    # after the LAST camera in the sequential startup finishes -- used below
+    # only as the top-level session duration_s. Per-camera fps_achieved uses
+    # each camera's OWN start time instead (rig.start_time()), since cameras
+    # start sequentially and using this one shared start_time for all of
+    # them inflated earlier-started cameras' fps_achieved on real hardware
+    # (RGB1, started first, read 39fps against a configured 30fps cap).
     start_time = time.monotonic()
 
     try:
         stop_event.wait(timeout=args.duration or None)
     finally:
-        duration_s = max(time.monotonic() - start_time, 1e-6)
+        stop_time = time.monotonic()
+        duration_s = max(stop_time - start_time, 1e-6)
         rig.stop()
         monitor.stop()
 
@@ -83,11 +84,13 @@ def main() -> int:
     for name in rig.active_names:
         bytes_written = rig.dir_size_bytes(name)
         total_bytes += bytes_written
+        camera_duration_s = max(stop_time - rig.start_time(name), 1e-6)
         per_camera[name] = {
             "serial_number": rig.serials[name],
             "frame_count": rig.frame_count(name),
             "dropped_count": rig.dropped_count(name),
-            "fps_achieved": rig.frame_count(name) / duration_s,
+            "duration_s": camera_duration_s,
+            "fps_achieved": rig.frame_count(name) / camera_duration_s,
             "bytes_written": bytes_written,
         }
         print(

@@ -5,6 +5,7 @@ isn't duplicated across scripts.
 """
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -85,8 +86,21 @@ class MultiBaslerRig:
         return on_frame
 
     def start(self) -> None:
+        # Cameras are started sequentially, so an earlier camera in
+        # active_names has already been actively grabbing for however long
+        # the later cameras took to connect/configure -- confirmed on real
+        # hardware: a single shared start_time in the caller inflated the
+        # first-started camera's fps_achieved to 39fps against a configured
+        # 30fps cap. Tracking each camera's own start time (right after ITS
+        # start() call, not after the whole loop) is what makes per-camera
+        # duration/fps accurate.
+        self._start_times: dict[str, float] = {}
         for name in self.active_names:
             self._recorders[name].start(self._make_on_frame(name))
+            self._start_times[name] = time.monotonic()
+
+    def start_time(self, name: str) -> float:
+        return self._start_times[name]
 
     def stop(self) -> None:
         for name in self.active_names:
