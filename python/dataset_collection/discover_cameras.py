@@ -76,13 +76,15 @@ def report_event_cameras() -> list:
     if len(serials) != len(set(serials)):
         print(
             "  WARNING: two or more event cameras reported the IDENTICAL serial string above. "
-            "This has been seen on CSI-attached GenX320 pairs via the Prophesee HAL plugin -- "
-            "Camera.from_serial() may not actually distinguish them, meaning both Event1/Event2 "
-            "could end up opening the same physical device. Checking this needs physically "
-            "disconnecting one camera at a time (unlike GigE Baslers, covering the lens doesn't "
-            "change what a CSI device reports at discovery time) and re-running this script to "
-            "see whether the identifier actually changes -- may need Prophesee's docs/support if "
-            "it doesn't, before Phase 4/5 can trust having both event cameras active at once."
+            "Root-caused on this module's hardware (see README's \"Why do two event cameras show "
+            "the same identifier?\"): the Jetson boots with a device-tree overlay declaring TWO "
+            "logical CSI camera slots even though only one has a real sensor wired to it, so the "
+            "unwired slot's query returns the same serial as the real one -- expected here, not a "
+            "new problem. Leave the unwired slot's serial_number blank in camera_info.yaml "
+            "(MultiEventRig skips it) rather than trying to disambiguate two identical strings. "
+            "If you ever see this warning with two DIFFERENT serials, or expected only one event "
+            "camera entry and see two, that's a different, actually-new situation worth "
+            "investigating rather than assuming it's this same known cause."
         )
     return event_cameras
 

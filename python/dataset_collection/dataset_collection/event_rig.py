@@ -26,15 +26,19 @@ class MultiEventRig:
     """Owns one EventCameraRecorder + EventRecordWriter pair per active (has
     a configured serial_number) event camera among Event1/Event2.
 
-    IMPORTANT: if your event cameras report identical/ambiguous serial
-    strings from discover_cameras.py (this has been seen on CSI-attached
-    GenX320 pairs via the Prophesee HAL plugin), Camera.from_serial() may
-    not actually distinguish them -- both could open the same physical
-    device. Unlike GigE Baslers, covering a lens doesn't change what a CSI
-    device reports at discovery time, so verifying this needs physically
-    disconnecting one camera at a time and checking whether the reported
-    serial actually changes -- see discover_cameras.py's duplicate-serial
-    warning.
+    IMPORTANT, root-caused on real hardware (see README's "Why do two event
+    cameras show the same identifier?"): on this module, only one GenX320
+    slot has a real sensor wired to it, but the Jetson boots with a
+    device-tree overlay declaring TWO logical CSI camera slots regardless,
+    so discover_cameras.py reports two event cameras with an IDENTICAL
+    serial string -- not a bug in discovery, and not something
+    Camera.from_serial() can disambiguate. camera_info.yaml leaves the unwired
+    slot's serial_number blank on purpose; this class skips any slot with no
+    serial configured (see active_names below), which is the actual fix in
+    use -- confirmed working: the active slot (Event1) captures real events
+    correctly. Don't try the "cover a lens and see if the serial changes"
+    trick here -- unlike GigE Baslers, a CSI device's reported identity
+    doesn't depend on what's in front of the lens.
     """
 
     def __init__(self, output_dir: Path, serials: dict[str, str], bias_file: str = ""):

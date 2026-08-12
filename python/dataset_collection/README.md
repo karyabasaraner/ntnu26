@@ -85,14 +85,49 @@ Run each from `python/dataset_collection/` with the venv active.
 | 4 | `record_rgb_event.py` | `<output>/RGB1/ ... RGB4/`, `<output>/Event1/`, `<output>/Event2/`, `<output>/timestamps.csv` |
 | 5 | `record.py` | `<output>/RGB1/ ... RGB4/`, `<output>/Event1/`, `<output>/Event2/`, `<output>/imu.csv`, `<output>/metadata.json` |
 
-**Two event cameras, not one:** the module has 2 Prophesee GenX320s
-(`Event1`/`Event2` in `camera_info.yaml`). On at least one real Jetson this
-was developed against, `discover_cameras.py` reported the *identical* serial
-string for both -- if that happens to you too, `Camera.from_serial()` may
-not actually distinguish them, meaning both could silently open the same
-physical device. `discover_cameras.py` warns about this automatically when
-it sees duplicate serials; see `dataset_collection/event_rig.py`'s docstring
-for how to check by hand (cover one lens at a time and compare).
+**Why do two event cameras show the same identifier?**
+
+The module has 2 Prophesee GenX320 slots (`Event1`/`Event2` in
+`camera_info.yaml`), but on this hardware only one has a real sensor wired
+to it. `discover_cameras.py` still reports **two** event cameras, both with
+the *identical* serial string (`Prophesee:hal_plugin_prophesee:genx320
+9-003c`) -- confirmed via `metavision_hal.DeviceDiscovery.list()` itself
+returning that string twice, so this isn't a bug in this toolkit's discovery
+code.
+
+Root cause (confirmed on-device): the GenX320s are CSI-connected, and the
+Jetson boots with a device-tree overlay
+(`tegra234-p3767-camera-p3768-genx320-dual.dtbo`, applied via NVIDIA's
+`jetson-io.py` "Jetson Camera GENX320 Dual" hardware profile) that declares
+**two** logical camera slots at the kernel level, regardless of what's
+physically populated. With only one slot wired to a real sensor, the second
+slot's query doesn't cleanly report "not found" -- it returns the same
+serial as the real one.
+
+**Why this is left as-is rather than "fixed":** the only way to get a
+single-camera overlay applied would be hand-editing `extlinux.conf` (the
+file that controls whether the Jetson boots at all) to point at a
+`genx320-A.dtbo` single-camera overlay -- but `jetson-io.py`'s own list of
+supported hardware profiles (checked directly: **Configure Jetson 24pin CSI
+Connector → Configure for compatible hardware**) only offers "Jetson Camera
+GENX320 Dual", no single-camera variant. There's no officially-supported
+path to change this, and no real payoff if we did -- the toolkit already
+handles it cleanly at the software level (below), and there's only one
+physical sensor either way, so a "fix" would only make the discovery output
+tidier, not unlock anything new.
+
+**Current, working state:** `camera_info.yaml` leaves `Event2`'s
+`serial_number` blank. Every script that drives multiple event cameras
+(`MultiEventRig` in `dataset_collection/event_rig.py`) skips any slot with
+no serial configured, so `Event1` runs normally and `Event2` is never
+opened -- confirmed on real hardware: `record_event.py --camera Event1`
+captures real events correctly (see Phase 1's verification note above).
+`discover_cameras.py` prints a warning automatically whenever it sees
+duplicate serials, as a safety net in case this ever changes (e.g. a second
+sensor genuinely gets wired in later) -- if that warning ever refers to two
+*different* serial strings instead of an identical pair, that's a sign the
+underlying hardware situation has actually changed and this note should be
+revisited.
 
 All scripts take `--config config/camera_info.yaml` (serial numbers) and
 `--output-dir <dir>` (defaults documented with `--help`). Re-running a script
