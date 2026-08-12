@@ -115,15 +115,29 @@ def write_discovered(config_path: Path, baslers: list, event_cameras: list) -> N
 
 def auto_assign(config_path: Path, camera_info: dict, baslers: list, event_cameras: list) -> None:
     cameras = camera_info.get("cameras", []) or []
+    # Only consider devices not already assigned to some OTHER slot in the
+    # file. Previously zipped empty_camera_slots against ALL discovered
+    # devices regardless of whether they were already in use elsewhere --
+    # happened to work by luck of discovery order when only one slot was
+    # empty, but could silently assign an already-used serial into an empty
+    # slot (creating a duplicate) if that order ever changed. This also now
+    # correctly protects the event cameras' known duplicate-serial situation:
+    # since both discovered event cameras report the SAME serial and Event1
+    # already claims it, Event2's empty slot is correctly left untouched
+    # rather than getting that same duplicate serial assigned into it too.
+    already_assigned = {entry.get("serial_number") for entry in cameras if entry.get("serial_number")}
     empty_camera_slots = [entry for entry in cameras if not entry.get("serial_number")]
-    for entry, device in zip(empty_camera_slots, baslers):
+    unassigned_baslers = [device for device in baslers if device.serial_number not in already_assigned]
+    for entry, device in zip(empty_camera_slots, unassigned_baslers):
         entry["serial_number"] = device.serial_number
         entry["ip_address"] = device.ip_address
         entry["model_name"] = device.model_name
 
     event_entries = camera_info.get("event_cameras", []) or []
+    already_assigned_events = {entry.get("serial_number") for entry in event_entries if entry.get("serial_number")}
     empty_event_slots = [entry for entry in event_entries if not entry.get("serial_number")]
-    for entry, device in zip(empty_event_slots, event_cameras):
+    unassigned_events = [device for device in event_cameras if device.serial_number not in already_assigned_events]
+    for entry, device in zip(empty_event_slots, unassigned_events):
         entry["serial_number"] = device.serial_number
 
     config_path.write_text(yaml.safe_dump(camera_info, sort_keys=False), encoding="utf-8")
