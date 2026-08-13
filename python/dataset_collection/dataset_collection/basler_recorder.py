@@ -71,6 +71,17 @@ class BaslerRecorder:
     def dropped_count(self) -> int:
         return self._dropped_count
 
+    @property
+    def drift_ppm(self) -> float:
+        """How far this camera's actual oscillator has turned out to run
+        from its nominal GevTimestampTickFrequency, in parts per million --
+        see ClockAnchor.drift_from_nominal_ppm. 0.0 until enough frames have
+        come in to refine the estimate away from the nominal seed value.
+        Recorded per-run in summary.json so drift correction is visible/
+        auditable, not just something happening silently in the background.
+        """
+        return self._clock_anchor.drift_from_nominal_ppm
+
     def open(self) -> None:
         from pypylon import pylon
 
@@ -177,7 +188,11 @@ class BaslerRecorder:
             grab_result.Release()
 
             exposure_host_ns = (
-                self._clock_anchor.to_host_ns(camera_ticks)
+                # Pass arrival_host_ns as the observed sample for the
+                # drift-correcting fit (see ClockAnchor) -- it's already the
+                # closest available real-world reading for this tick value,
+                # captured immediately after RetrieveResult() returned.
+                self._clock_anchor.to_host_ns(camera_ticks, arrival_host_ns)
                 if self._ns_per_tick > 0.0
                 else arrival_host_ns
             )

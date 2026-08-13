@@ -69,6 +69,16 @@ name/signature could not be confirmed and should be checked first.
 - Bias file loading (`--bias-file`) -- `.biases().set_from_file(...)`
   doesn't exist either; likely replacement is `device.get_i_ll_biases()`,
   unconfirmed. Raises `NotImplementedError` rather than guessing.
+- `ClockAnchor`'s drift correction (see "Clock drift correction" below) --
+  the math is sanity-checked against a synthetic simulated-drift camera
+  (not real hardware): a simulated ~0.63%-fast clock with random host-
+  arrival jitter converged from a >100us fixed-rate error to single-digit-
+  microsecond accuracy within a few thousand samples, and the fitted
+  `drift_from_nominal_ppm` matched the simulation's injected drift almost
+  exactly. Re-run `record_multi_rgb.py` on-device and check
+  `summary.json`'s `clock_drift_ppm` lands in the same ballpark Phase 3
+  found (rather than near 0 or something wildly different) before trusting
+  it on a real long recording.
 
 ## Phase checkpoints
 
@@ -141,7 +151,8 @@ process's monotonic clock (`time.monotonic_ns()`, i.e. `CLOCK_MONOTONIC`).
 
 - Basler frames: camera-tick timestamps converted via
   `GevTimestampTickFrequency` and anchored onto the monotonic clock at stream
-  start (mirrors `core/modules/camera/pylon_camera.cpp`).
+  start (mirrors `core/modules/camera/pylon_camera.cpp`), **and
+  drift-corrected** (see below).
 - Event camera CD events: device microsecond timestamps anchored onto the
   monotonic clock at the first event batch (mirrors
   `core/modules/event_camera/prophesee_event_camera.cpp`).
@@ -150,11 +161,43 @@ process's monotonic clock (`time.monotonic_ns()`, i.e. `CLOCK_MONOTONIC`).
   no anchoring is needed, only a coarser host-side fallback if that channel
   isn't exposed.
 
-None of this corrects for clock drift between a sensor's own oscillator and
-the host over a long recording -- only single-point anchoring at stream
-start. Good enough to answer Phase 3's "how synchronized are the cameras?"
-at a first pass; revisit if `analyze_latency.py` shows drift growing over a
-recording's length.
+### Clock drift correction
+
+Phase 3 (`analyze_latency.py`) measured real per-camera oscillator deviation
+on this hardware by comparing each Basler's own reported
+`GevTimestampTickFrequency` against the others directly: on the order of
+0.04% on one camera, 0.63% on another. A single fixed-rate anchor at stream
+start (the original approach) lets that error grow for the entire recording
+-- negligible over a 5s test clip, but this module is meant to feed long,
+SLAM-relevant recordings (many minutes), where 0.63% adds up to real
+cross-camera misalignment.
+
+`ClockAnchor` (`clock.py`) now self-corrects for this instead of just
+documenting it as a limitation. It still anchors the very first sample
+exactly as before (so short recordings behave identically to the old code),
+but every subsequent sample also feeds a running least-squares fit of the
+device's *actual* ticks-to-ns rate, using the real (camera tick, host
+arrival time) pairs observed during the recording -- not the camera's
+nominal/reported frequency. The fit only ever refines the rate going
+forward; it never revises a timestamp it already produced, so there's no
+jump or discontinuity, just increasing accuracy the longer the recording
+runs. This is the same idea NTP/PTP use to discipline a clock from noisy
+round-trip samples, simplified to fit here (no windowing/re-anchoring
+needed since a crystal oscillator's drift rate is stable over the timescales
+this module records at).
+
+Each run's `summary.json`/`metadata.json` records the refined
+`clock_drift_ppm` per RGB camera (how far the fitted rate ended up from
+nominal) so the correction is auditable, not just a claim -- expect numbers
+in the same ballpark as Phase 3's measurements above once a recording has
+enough frames to converge (a handful of seconds' worth).
+
+Event cameras don't have this correction yet -- only Basler/RGB uses
+`GevTimestampTickFrequency`-style ticks today; Metavision's raw recording
+path (Phase 1) doesn't go through `ClockAnchor` at all yet since
+`stream_events()`'s decoded-CD-event path (which is what would use it) is
+still unimplemented (see `event_recorder.py`'s NOTE(verify-on-device)). Wire
+event timestamps through `ClockAnchor` the same way once that's built.
 
 ## Layout
 

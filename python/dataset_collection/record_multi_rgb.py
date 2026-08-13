@@ -92,10 +92,16 @@ def main() -> int:
             "duration_s": camera_duration_s,
             "fps_achieved": rig.frame_count(name) / camera_duration_s,
             "bytes_written": bytes_written,
+            # How far this camera's real oscillator turned out to run from
+            # its nominal tick frequency, as measured (and corrected for) by
+            # ClockAnchor over this recording -- see clock.py. Recorded here
+            # so drift correction is auditable per-run, not just a claim.
+            "clock_drift_ppm": rig.drift_ppm(name),
         }
         print(
             f"{name}: {rig.frame_count(name)} frames, {rig.dropped_count(name)} dropped, "
-            f"{per_camera[name]['fps_achieved']:.2f} fps"
+            f"{per_camera[name]['fps_achieved']:.2f} fps, "
+            f"clock drift {per_camera[name]['clock_drift_ppm']:+.1f}ppm vs nominal"
         )
 
     write_metadata(output_dir / "summary.json", {

@@ -117,3 +117,6 @@ class MultiBaslerRig:
 
     def dropped_count(self, name: str) -> int:
         return self._recorders[name].dropped_count
+
+    def drift_ppm(self, name: str) -> float:
+        return self._recorders[name].drift_ppm

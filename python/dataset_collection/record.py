@@ -19,9 +19,12 @@ docstring before trusting a run with both active.
 
 Every stream's timestamps share one clock domain (process monotonic clock,
 see dataset_collection/clock.py) so alignment across RGB/Event/IMU is a
-direct timestamp comparison, no cross-stream calibration needed for a first
-pass -- see the README's clock-domain section for what this does and doesn't
-account for (no drift correction over a long recording).
+direct timestamp comparison, no cross-stream calibration needed. RGB camera
+timestamps are drift-corrected: ClockAnchor continuously refines its ticks-
+to-ns rate from real (camera tick, host arrival) samples over the recording,
+instead of trusting the camera's nominal clock frequency for the whole run
+-- see clock.py and the README's clock-domain section for why that matters
+for recordings much longer than a quick test clip.
 """
 from __future__ import annotations
 
@@ -158,8 +161,15 @@ def main() -> int:
     for name in rig.active_names:
         first_ns, last_ns = _first_last_exposure_ns(output_dir / name / "timestamps.csv")
         manifest.write({"stream": name, "count": rig.frame_count(name), "first_host_ns": first_ns, "last_host_ns": last_ns})
-        per_stream[name] = {"frame_count": rig.frame_count(name), "dropped_count": rig.dropped_count(name)}
-        print(f"{name}: {rig.frame_count(name)} frames, {rig.dropped_count(name)} dropped")
+        per_stream[name] = {
+            "frame_count": rig.frame_count(name),
+            "dropped_count": rig.dropped_count(name),
+            "clock_drift_ppm": rig.drift_ppm(name),
+        }
+        print(
+            f"{name}: {rig.frame_count(name)} frames, {rig.dropped_count(name)} dropped, "
+            f"clock drift {rig.drift_ppm(name):+.1f}ppm vs nominal"
+        )
 
     for name in event_rig.active_names:
         bounds = event_rig.bounds(name)
