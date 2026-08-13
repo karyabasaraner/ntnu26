@@ -192,6 +192,23 @@ nominal) so the correction is auditable, not just a claim -- expect numbers
 in the same ballpark as Phase 3's measurements above once a recording has
 enough frames to converge (a handful of seconds' worth).
 
+**Anchor-bias fix (found via the real-hardware test above):** the first
+version of this fix still pinned the anchor to a single first sample. On
+real 4-camera hardware (heavy CPU load from Bayer demosaic + PNG encode)
+that showed up as a constant few-ms offset in every camera's exposure ->
+arrival latency (`analyze_latency.py`'s new plot showed a flat line, so no
+drift growth -- but shifted below zero the whole time, which is physically
+impossible: a frame can't arrive before it's exposed). Cause: frame 1
+happened to have atypically low latency before the other cameras' threads
+started contending for CPU, and the anchor trusted that one sample as
+ground truth for the entire recording. Fixed by buffering the first 16
+`(device_ticks, observed_host_ns)` pairs and anchoring on an ordinary
+least-squares fit (both slope and intercept) through all of them, instead
+of one point -- same principle as the drift fix, applied to the anchor
+itself. A synthetic test with a deliberately atypical first sample showed
+about a 3.7x reduction in the resulting bias with the 16-sample warm-up vs.
+a single-sample anchor.
+
 Event cameras don't have this correction yet -- only Basler/RGB uses
 `GevTimestampTickFrequency`-style ticks today; Metavision's raw recording
 path (Phase 1) doesn't go through `ClockAnchor` at all yet since
