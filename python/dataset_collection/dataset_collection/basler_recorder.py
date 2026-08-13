@@ -86,7 +86,24 @@ class BaslerRecorder:
         self._camera.Open()
         self._serial_number = self._camera.GetDeviceInfo().GetSerialNumber()
 
-        self._camera.PixelFormat.SetValue("BayerRG8")
+        # Confirmed on-device: different physical units of the same nominal
+        # "dmA720-290gc" model can support different Bayer CFA variants --
+        # one unit only offered BayerGB8, not BayerRG8, crashing here with
+        # an AccessException ("Enum entry is not writable", which for a
+        # GenICam enum really means "not a valid value for this instance").
+        # ImageFormatConverter below correctly demosaics whichever Bayer
+        # variant the source actually is, so pick the first available 8-bit
+        # Bayer format from THIS camera's own reported options instead of
+        # assuming one universally.
+        available_formats = list(self._camera.PixelFormat.Symbolics)
+        preferred_bayer_order = ["BayerRG8", "BayerGB8", "BayerGR8", "BayerBG8"]
+        pixel_format = next((fmt for fmt in preferred_bayer_order if fmt in available_formats), None)
+        if pixel_format is None:
+            raise RuntimeError(
+                f"No supported 8-bit Bayer pixel format found for camera "
+                f"{self._serial_number}; available formats: {available_formats}"
+            )
+        self._camera.PixelFormat.SetValue(pixel_format)
         self._camera.AcquisitionFrameRateEnable.SetValue(True)
         self._camera.AcquisitionFrameRate.SetValue(self._fps)
         self._camera.ExposureAuto.SetValue("Off")
