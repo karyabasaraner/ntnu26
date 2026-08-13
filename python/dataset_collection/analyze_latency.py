@@ -100,6 +100,52 @@ def plot_pipeline_latency(pdf: PdfPages, camera: CameraTimestamps) -> None:
     plt.close(fig)
 
 
+def latency_drift_slope_ms_per_min(camera: CameraTimestamps) -> float:
+    """Linear-fit slope of exposure->arrival latency against elapsed time,
+    in ms/min. This is the real-hardware test for ClockAnchor's drift
+    correction (clock.py): exposure_host_ns is derived from the camera's
+    tick clock via ClockAnchor, while arrival_host_ns is the host's own
+    clock, read directly -- unaffected by any camera-side rate error. If
+    ClockAnchor's rate estimate is wrong (uncorrected drift), that error
+    shows up as a straight-line TREND in this latency over the course of
+    the recording, growing at ~ (true oscillator error, ppm) ms per minute.
+    If drift correction is working, this pipeline latency has no reason to
+    trend -- it should stay flat around whatever constant camera->host
+    latency this hardware actually has, near 0 ms/min. This is what to
+    check on real hardware; the fix was only sanity-checked in this
+    toolkit's own simulation before now.
+    """
+    if camera.exposure_ns.size < 2:
+        return 0.0
+    elapsed_min = (camera.exposure_ns - camera.exposure_ns[0]).astype(np.float64) / 1e9 / 60.0
+    latency_ms = ns_to_ms(camera.arrival_ns - camera.exposure_ns)
+    if elapsed_min[-1] <= 0:
+        return 0.0
+    slope_ms_per_min, _intercept = np.polyfit(elapsed_min, latency_ms, 1)
+    return float(slope_ms_per_min)
+
+
+def plot_latency_drift_trend(pdf: PdfPages, camera: CameraTimestamps) -> None:
+    if camera.exposure_ns.size < 2:
+        return
+    elapsed_min = (camera.exposure_ns - camera.exposure_ns[0]).astype(np.float64) / 1e9 / 60.0
+    latency_ms = ns_to_ms(camera.arrival_ns - camera.exposure_ns)
+    slope, intercept = np.polyfit(elapsed_min, latency_ms, 1)
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.scatter(elapsed_min, latency_ms, s=4, alpha=0.3)
+    trend_x = np.array([elapsed_min[0], elapsed_min[-1]])
+    ax.plot(trend_x, slope * trend_x + intercept, color="red",
+            label=f"trend: {slope:+.2f} ms/min")
+    ax.set_title(f"{camera.name}: exposure->arrival latency over the recording (clock drift check)")
+    ax.set_xlabel("elapsed time (min)")
+    ax.set_ylabel("exposure -> arrival latency (ms)")
+    ax.legend()
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
 def plot_frame_interval_jitter(pdf: PdfPages, camera: CameraTimestamps) -> None:
     if camera.exposure_ns.size < 2:
         return
@@ -166,10 +212,17 @@ def print_summary(cameras: list[CameraTimestamps]) -> None:
     for camera in cameras:
         exposure_to_arrival_ms = ns_to_ms(camera.arrival_ns - camera.exposure_ns)
         end_to_end_ms = ns_to_ms(camera.disk_write_ns - camera.exposure_ns)
+        drift_slope = latency_drift_slope_ms_per_min(camera)
+        duration_min = (
+            float(camera.exposure_ns[-1] - camera.exposure_ns[0]) / 1e9 / 60.0
+            if camera.exposure_ns.size >= 2 else 0.0
+        )
         print(
             f"{camera.name}: {camera.exposure_ns.size} frames | "
             f"exposure->arrival median={np.median(exposure_to_arrival_ms):.2f}ms | "
-            f"end-to-end median={np.median(end_to_end_ms):.2f}ms"
+            f"end-to-end median={np.median(end_to_end_ms):.2f}ms | "
+            f"latency trend={drift_slope:+.3f}ms/min over {duration_min:.2f}min "
+            f"(clock drift check -- should stay near 0; see plot)"
         )
     if len(cameras) >= 2:
         reference = cameras[0]
@@ -192,6 +245,7 @@ def main() -> int:
         for camera in cameras:
             plot_pipeline_latency(pdf, camera)
             plot_frame_interval_jitter(pdf, camera)
+            plot_latency_drift_trend(pdf, camera)
         plot_cross_camera_sync(pdf, cameras)
 
     print_summary(cameras)
