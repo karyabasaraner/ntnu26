@@ -75,20 +75,40 @@ def parse_args() -> argparse.Namespace:
         "--denoise-radius", type=int, default=1,
         help="neighborhood radius in pixels for --denoise-us (1 = 3x3 neighborhood, the default)",
     )
+    parser.add_argument(
+        "--denoise-min-neighbors", type=int, default=1,
+        help="require at least this many DISTINCT recently-active pixels in the neighborhood, "
+        "not just one (default 1 = original behavior). Confirmed on real hardware that "
+        "min_neighbors=1 isn't selective enough on this sensor's noise: tightening "
+        "--denoise-us alone dropped ~48%% of ALL events with no visible drop in background "
+        "noise, meaning single-neighbor pairs of noise are about as common as single-neighbor "
+        "real motion. Real motion lights up SEVERAL nearby pixels together; try 2 or 3 here.",
+    )
     return parser.parse_args()
 
 
 def _denoise_keep_mask(
     xs: np.ndarray, ys: np.ndarray, ts: np.ndarray, last_active: np.ndarray, threshold_us: float, radius: int,
+    min_neighbors: int = 1,
 ) -> np.ndarray:
-    """Spatiotemporal activity filter -- keeps an event only if some pixel
-    within `radius` of it (itself included) fired within `threshold_us`
-    before it. Real motion lights up a neighborhood of pixels together in a
-    short window; isolated single-pixel noise doesn't have that support and
-    gets dropped. `last_active` is a persistent (height, width) array of
-    the last-seen event time per pixel (same units as `ts`, i.e. device
-    microseconds), carried across calls so the filter has memory across the
-    whole recording rather than resetting every delta-t chunk.
+    """Spatiotemporal activity filter -- keeps an event only if at least
+    `min_neighbors` DISTINCT pixels within `radius` of it (itself included)
+    fired within `threshold_us` before it. Real motion lights up several
+    nearby pixels together in a short window; isolated noise doesn't have
+    that support and gets dropped. `last_active` is a persistent (height,
+    width) array of the last-seen event time per pixel (same units as
+    `ts`, i.e. device microseconds), carried across calls so the filter has
+    memory across the whole recording rather than resetting every delta-t
+    chunk.
+
+    min_neighbors=1 (the default) only requires ONE recently-active
+    neighbor -- confirmed on real hardware this isn't selective enough for
+    this sensor's actual noise character: tightening the time window alone
+    (20ms -> 3ms) dropped ~48% of all events with no visible reduction in
+    background noise dots, meaning isolated noise pairs pass a
+    single-neighbor test about as easily as real motion does. Raising
+    min_neighbors to 2 or 3 is a much stronger test, since real motion
+    typically lights up several pixels together, not just two.
 
     Processes events one at a time in chronological order (required for
     correctness: two real, temporally-close events at neighboring pixels
@@ -115,7 +135,12 @@ def _denoise_keep_mask(
         ti = ts[i]
         y0, y1 = max(0, yi - radius), min(height, yi + radius + 1)
         x0, x1 = max(0, xi - radius), min(width, xi + radius + 1)
-        keep[i] = last_active[y0:y1, x0:x1].max() >= ti - threshold_us
+        # Count DISTINCT recently-active pixels in the neighborhood, not
+        # total historical events there -- last_active only ever stores the
+        # latest fire time per pixel, so a single pixel repeatedly firing
+        # can't masquerade as "several neighbors" here.
+        active_count = int((last_active[y0:y1, x0:x1] >= ti - threshold_us).sum())
+        keep[i] = active_count >= min_neighbors
         last_active[yi, xi] = ti
     return keep
 
@@ -145,14 +170,15 @@ def main() -> int:
         # it's actually fired even once -- device timestamps start near 0,
         # so an initial value of 0 would falsely count as recent activity.
         last_active = np.full((height, width), -1e15, dtype=np.float64)
-        print(f"Denoising: keeping events with a neighbor active within {args.denoise_us:.0f}us "
-              f"(radius={args.denoise_radius}px)")
+        print(f"Denoising: keeping events with >= {args.denoise_min_neighbors} neighbor(s) active "
+              f"within {args.denoise_us:.0f}us (radius={args.denoise_radius}px)")
 
     for evs in mv_iterator:
         total_before_denoise += int(evs.size)
         if denoise_enabled and evs.size > 0:
             keep_mask = _denoise_keep_mask(
                 evs["x"], evs["y"], evs["t"].astype(np.float64), last_active, args.denoise_us, args.denoise_radius,
+                min_neighbors=args.denoise_min_neighbors,
             )
             evs = evs[keep_mask]
         chunk_counts.append(int(evs.size))
