@@ -13,6 +13,13 @@ NOTE(verify-on-device): the Python `iio` module's exact Context/Device/Buffer
 API (attribute names, buffer refill semantics, per-channel read()) can vary
 by libiio version/build. Never run against the real SPI/IIO hardware -- check
 this against your actual bindings (built from third-party/libiio) first.
+
+Confirmed on real hardware: `sampling_frequency` is exposed per-CHANNEL on
+this BMI088 driver (`accel_x`/`accel_y`/`accel_z` each have their own), not
+as a device-level attribute -- `device.attrs` has no `sampling_frequency`
+key at all (only `current_timestamp_clock`, `dev_err`, `dev_state`,
+`dump_regs`, `mount_matrix`, `part`). `open()` below sets it on every
+channel that exposes the attribute rather than assuming a device-level one.
 """
 from __future__ import annotations
 
@@ -75,14 +82,6 @@ class ImuRecorder:
         if self._device is None:
             raise RuntimeError(f"IIO device '{self._device_id}' not found")
 
-        if self._sampling_frequency > 0:
-            try:
-                self._device.attrs["sampling_frequency"].value = str(self._sampling_frequency)
-            except (KeyError, OSError) as exc:
-                raise RuntimeError(
-                    f"Failed to set sampling_frequency={self._sampling_frequency} on '{self._device_id}': {exc}"
-                ) from exc
-
         self._channels = []
         for name in self._channel_names:
             channel = self._device.find_channel(name)
@@ -90,6 +89,36 @@ class ImuRecorder:
                 raise RuntimeError(f"IIO channel '{name}' not found on device '{self._device_id}'")
             channel.enabled = True
             self._channels.append(channel)
+
+        if self._sampling_frequency > 0:
+            # Confirmed on real hardware: this driver exposes
+            # sampling_frequency per-CHANNEL (accel_x/accel_y/accel_z each
+            # have their own), not as a device-level attribute -- the
+            # device itself only exposes ['current_timestamp_clock',
+            # 'dev_err', 'dev_state', 'dump_regs', 'mount_matrix', 'part'],
+            # no 'sampling_frequency' at all. Set it on every channel that
+            # exposes the attribute (all axes share one underlying ODR
+            # register on this driver, so one would suffice, but setting
+            # all of them is harmless and doesn't assume that stays true).
+            set_on_any = False
+            for channel in self._channels:
+                if "sampling_frequency" not in channel.attrs:
+                    continue
+                try:
+                    channel.attrs["sampling_frequency"].value = str(self._sampling_frequency)
+                    set_on_any = True
+                except OSError as exc:
+                    raise RuntimeError(
+                        f"Failed to set sampling_frequency={self._sampling_frequency} on "
+                        f"channel '{channel.id}' of '{self._device_id}': {exc}"
+                    ) from exc
+            if not set_on_any:
+                raise RuntimeError(
+                    f"No channel on '{self._device_id}' exposes a 'sampling_frequency' "
+                    f"attribute (checked: {[c.id for c in self._channels]}) -- can't set "
+                    f"sampling_frequency={self._sampling_frequency}. Pass 0 to skip this and "
+                    f"use the driver's default rate instead."
+                )
 
         # Optional hardware timestamp channel -- see module docstring.
         self._timestamp_channel = self._device.find_channel("timestamp")
