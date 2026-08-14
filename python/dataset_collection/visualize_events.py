@@ -173,7 +173,22 @@ def main() -> int:
         print(f"Denoising: keeping events with >= {args.denoise_min_neighbors} neighbor(s) active "
               f"within {args.denoise_us:.0f}us (radius={args.denoise_radius}px)")
 
+    total_invalid_coords = 0
     for evs in mv_iterator:
+        if evs.size > 0:
+            # Confirmed on real hardware: a corrupted/flaky recording can
+            # decode events with x/y outside the sensor's actual
+            # resolution (e.g. y=696 on a 320-tall sensor), alongside the
+            # SDK's own "TimeHigh discrepancy" warnings printed straight to
+            # the terminal while parsing such a file. Every array index
+            # below (denoise, heatmap accumulation, GIF frame) uses x/y as
+            # raw indices with no bounds checking, so one bad event used to
+            # crash the whole run (or worse, silently write out of bounds)
+            # instead of just being dropped like the garbage it is.
+            valid_mask = (evs["x"] >= 0) & (evs["x"] < width) & (evs["y"] >= 0) & (evs["y"] < height)
+            if not valid_mask.all():
+                total_invalid_coords += int((~valid_mask).sum())
+                evs = evs[valid_mask]
         total_before_denoise += int(evs.size)
         if denoise_enabled and evs.size > 0:
             keep_mask = _denoise_keep_mask(
@@ -202,6 +217,12 @@ def main() -> int:
         total_events += evs.size
         total_pos += int(pos_mask.sum())
         total_neg += int(neg_mask.sum())
+
+    if total_invalid_coords > 0:
+        print(f"WARNING: dropped {total_invalid_coords} events with x/y outside the sensor's "
+              f"{width}x{height} resolution -- this file's recording looks corrupted/flaky "
+              f"(check for 'TimeHigh discrepancy' messages above from the SDK's own decoder). "
+              f"Consider re-recording rather than trusting this file.")
 
     duration_s = len(chunk_counts) * args.delta_t_ms / 1000.0
     print(f"Total events: {total_events} ({total_pos} positive / {total_neg} negative)")
