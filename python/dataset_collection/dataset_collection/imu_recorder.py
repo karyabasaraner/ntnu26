@@ -28,6 +28,22 @@ sensor's own precise internal clocking the way triggered capture would give.
 requested sampling_frequency was hit -- same "measure, don't just trust the
 config" approach used for RGB fps_achieved elsewhere in this toolkit.
 
+SECOND finding, from the first real recording with this polling approach:
+every sample came back byte-identical (min == max == mean across an entire
+10s recording, for both accel and gyro) despite physically tilting/shaking
+the sensor -- `raw` was returning a frozen, stale value, not a fresh
+on-demand conversion. Confirmed the fix by direct sysfs testing: `raw`
+stayed frozen across a physical tilt until `scan_elements/in_accel_*_en`
+and `buffer/enable` were both written 1 (matching the original power-state
+fix from much earlier in this project, where the same flags were needed to
+move the sensor's ACC_PWR_CONF/ACC_PWR_CTRL registers out of suspend) --
+after that, `raw` tracked real motion immediately. So `open()` below still
+enables each channel and still creates an `iio.Buffer` (equivalent to
+writing buffer/enable=1), but ONLY for that wake-up side effect -- it never
+calls `.refill()`/`.read()` on it, since that's the part that hangs without
+a trigger. The buffer object is kept alive as `self._buffer` so it isn't
+garbage-collected mid-recording, which would presumably disable it again.
+
 NOTE(verify-on-device): the Python `iio` module's exact Context/Device
 attribute API can vary by libiio version/build -- this was checked against
 the real bindings this deployment has, but if that changes, re-verify.
@@ -83,11 +99,13 @@ class ImuRecorder:
         self._channel_names = channels
         self._scale = scale
         self._sampling_frequency = sampling_frequency
-        self._buffer_samples = buffer_samples  # unused in polling mode; kept
-                                                 # for constructor compatibility
+        self._buffer_samples = buffer_samples  # sizes the wake-up buffer only
+                                                 # -- its data path is unused,
+                                                 # see open()
         self._context = None
         self._device = None
         self._channels: list = []
+        self._buffer = None
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._sample_count = 0
@@ -109,6 +127,14 @@ class ImuRecorder:
             channel = self._device.find_channel(name)
             if channel is None:
                 raise RuntimeError(f"IIO channel '{name}' not found on device '{self._device_id}'")
+            # Confirmed on real hardware: without this, `raw` reads return a
+            # FROZEN value forever (same reading regardless of real motion --
+            # caught by comparing two raw reads with a physical tilt in
+            # between: identical both times). Enabling the channel is what
+            # actually wakes the sensor's ADC into continuous conversion;
+            # `raw` alone doesn't trigger a fresh on-demand sample on this
+            # driver the way some IIO drivers' `raw` handlers do.
+            channel.enabled = True
             self._channels.append(channel)
 
         if self._sampling_frequency > 0:
@@ -163,7 +189,19 @@ class ImuRecorder:
                     f"use the driver's default rate instead."
                 )
 
+        # Confirmed on real hardware: creating this buffer (equivalently,
+        # writing 1 to buffer/enable) is REQUIRED even though we never call
+        # .refill()/.read() on it -- without it, `raw` reads are frozen (see
+        # the channel.enabled comment above). With it, `raw` reads track
+        # real motion. This is purely for that wake-up side effect; the
+        # buffer's actual data path (which needs a hardware trigger this
+        # deployment doesn't have -- see module docstring) is never used.
+        # Kept as self._buffer so it isn't garbage-collected mid-recording,
+        # which could disable it again.
+        self._buffer = iio.Buffer(self._device, self._buffer_samples, False)
+
     def close(self) -> None:
+        self._buffer = None
         self._device = None
         self._context = None
 
