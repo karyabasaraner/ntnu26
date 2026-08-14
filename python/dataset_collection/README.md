@@ -5,6 +5,14 @@ collection plan: hardware validation, individual-sensor recording, then
 progressively combining Basler RGB + Prophesee event camera + BMI088 IMU into
 one synchronized recording.
 
+**New to this repo? Start with [`HANDOFF.md`](HANDOFF.md) instead** -- a
+task-oriented guide (one-time setup, exact commands for every recording/
+visualization workflow, a file-by-file reference, known issues, and a
+troubleshooting section) written at the end of the internship that built
+this. This README covers the same ground in more reference/technical-design
+form (verification status per file, the clock-domain design in depth) --
+useful once you're past initial setup and want the "why" behind something.
+
 This is deliberately **separate from the C++ `core` stack** (`core-main` /
 `core-log`). The `core` stack is the production shared-memory + MCAP
 pipeline; this toolkit is the lighter-weight, quicker-to-iterate path for
@@ -240,21 +248,36 @@ there by design.
 
 ## Layout
 
+See `HANDOFF.md`'s "File-by-file reference" for a one-paragraph description
+of every file below, not just the phase it belongs to.
+
 ```
 dataset_collection/            # importable package: recorders + shared utilities
-  clock.py                     # shared monotonic clock + device-clock anchoring
+  __init__.py
+  clock.py                     # shared monotonic clock + device-clock anchoring (ClockAnchor)
   dataset_writer.py            # output-dir / CSV / metadata.json helpers
   discovery.py                 # Phase 0: enumerate Basler + event cameras, check IMU
   basler_recorder.py           # BaslerRecorder (pypylon)
-  event_recorder.py            # EventCameraRecorder (Metavision SDK)
-  imu_recorder.py              # ImuRecorder (libiio)
-config/camera_info.yaml        # Phase 0 deliverable: serial numbers per sensor
+  rgb_rig.py                   # MultiBaslerRig -- drives all 4 RGB1-4 at once
+  event_recorder.py            # EventCameraRecorder (Metavision SDK) -- raw + decoded paths
+  event_rig.py                 # MultiEventRig -- drives Event1/Event2 at once
+  event_types.py                # EventBatch dataclass (SDK-independent)
+  event_record_io.py           # on-disk binary format for decoded events (events.bin)
+  event_denoise.py             # spatiotemporal noise filter shared by both visualize_*.py scripts
+  imu_recorder.py               # ImuRecorder (libiio, polling-based -- see its own docstring)
+  resource_monitor.py          # background CPU/RAM sampler for summary.json
+config/camera_info.yaml        # Phase 0 deliverable: serial numbers per sensor (NOT committed)
+setup_venv.sh                  # one-time venv setup
+pyproject.toml                 # pip package metadata for `pip install -e .`
+check_environment.py           # verifies every SDK import works, run before Phase 0
 discover_cameras.py            # Phase 0 script
-record_basler.py               # Phase 1 script (single camera)
-record_event.py                # Phase 1 script
+record_basler.py               # Phase 1 script (single RGB camera)
+record_event.py                # Phase 1 script (single event camera, raw)
 record_imu.py                  # Phase 1 script
 record_multi_rgb.py            # Phase 2 script (all 4 Baslers)
 analyze_latency.py             # Phase 3 script
 record_rgb_event.py            # Phase 4 script
 record.py                      # Phase 5 script -- the "one command" entrypoint
+visualize_events.py            # decodes a single raw events.raw file (needs Metavision SDK)
+visualize_dataset.py           # combined RGB video + event video + IMU graphs for a full session
 ```
