@@ -122,11 +122,39 @@ def main() -> int:
         f"Recording {rig.active_names} + {event_rig.active_names}"
         + (" + IMU" if accel else "") + f" to {output_dir}. Ctrl+C to stop."
     )
-    rig.start()
-    event_rig.start()
-    if accel is not None and gyro is not None:
-        accel.start(make_on_imu_sample("accel"))
-        gyro.start(make_on_imu_sample("gyro"))
+    # Confirmed on real hardware: a failure partway through startup (IMU
+    # sampling_frequency rejected by the driver) used to propagate straight
+    # out of main() with RGB1-4 and Event1 already actively running in
+    # background threads -- nothing had called their stop()/close() yet, so
+    # the interpreter tore down the still-streaming Pylon/Metavision SDK
+    # objects mid-flight as it exited, which crashed the whole process
+    # ("terminate called recursively ... Aborted (core dumped)") instead of
+    # a clean Python traceback. Track what actually started and unwind it
+    # in an except block before re-raising, so a startup failure anywhere
+    # cleanly stops whatever DID start rather than crashing the process and
+    # potentially leaving a camera locked for the next attempt.
+    rig_started = event_rig_started = imu_started = False
+    try:
+        rig.start()
+        rig_started = True
+        event_rig.start()
+        event_rig_started = True
+        if accel is not None and gyro is not None:
+            accel.start(make_on_imu_sample("accel"))
+            gyro.start(make_on_imu_sample("gyro"))
+            imu_started = True
+    except Exception:
+        print("ERROR during startup -- stopping whatever already started before exiting.")
+        if imu_started:
+            accel.stop()
+            accel.close()
+            gyro.stop()
+            gyro.close()
+        if event_rig_started:
+            event_rig.stop()
+        if rig_started:
+            rig.stop()
+        raise
     # Started AFTER all four start() calls above and stopped BEFORE any of
     # the stop()/close() calls below, so this measures only the actual
     # active recording window -- not camera/event/IMU setup or teardown

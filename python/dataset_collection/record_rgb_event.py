@@ -76,8 +76,20 @@ def main() -> int:
     signal.signal(signal.SIGTERM, handle_signal)
 
     print(f"Recording {rig.active_names} + {event_rig.active_names} to {output_dir}. Ctrl+C to stop.")
-    rig.start()
-    event_rig.start()
+    # Same fix as record.py: if event_rig.start() fails after rig.start()
+    # already succeeded, don't let RGB1-4 keep running unstopped in the
+    # background while the exception propagates and crashes the process --
+    # see record.py's comment for what that looked like on real hardware.
+    rig_started = False
+    try:
+        rig.start()
+        rig_started = True
+        event_rig.start()
+    except Exception:
+        print("ERROR during startup -- stopping whatever already started before exiting.")
+        if rig_started:
+            rig.stop()
+        raise
 
     try:
         stop_event.wait(timeout=args.duration or None)

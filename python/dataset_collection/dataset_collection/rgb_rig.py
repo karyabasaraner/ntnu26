@@ -94,10 +94,22 @@ class MultiBaslerRig:
         # 30fps cap. Tracking each camera's own start time (right after ITS
         # start() call, not after the whole loop) is what makes per-camera
         # duration/fps accurate.
+        # If a later camera in active_names fails to start, don't leave
+        # earlier ones actively grabbing with nothing to stop them --
+        # confirmed on real hardware that letting a startup failure
+        # propagate with other cameras/streams still running crashed the
+        # whole process instead of exiting cleanly (see record.py's
+        # equivalent fix). Stop whatever DID start before re-raising.
         self._start_times: dict[str, float] = {}
-        for name in self.active_names:
-            self._recorders[name].start(self._make_on_frame(name))
-            self._start_times[name] = time.monotonic()
+        try:
+            for name in self.active_names:
+                self._recorders[name].start(self._make_on_frame(name))
+                self._start_times[name] = time.monotonic()
+        except Exception:
+            for started_name in self._start_times:
+                self._recorders[started_name].stop()
+                self._recorders[started_name].close()
+            raise
 
     def start_time(self, name: str) -> float:
         return self._start_times[name]

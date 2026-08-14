@@ -74,8 +74,19 @@ class MultiEventRig:
         return on_events
 
     def start(self) -> None:
-        for name in self.active_names:
-            self._recorders[name].stream_events(self._make_on_events(name))
+        # Same reasoning as MultiBaslerRig.start(): don't leave an earlier
+        # camera streaming with nothing to stop it if a later one fails to
+        # start.
+        started: list[str] = []
+        try:
+            for name in self.active_names:
+                self._recorders[name].stream_events(self._make_on_events(name))
+                started.append(name)
+        except Exception:
+            for started_name in started:
+                self._recorders[started_name].stop()
+                self._recorders[started_name].close()
+            raise
 
     def stop(self) -> None:
         for name in self.active_names:
