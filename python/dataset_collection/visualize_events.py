@@ -65,6 +65,8 @@ import numpy as np
 
 from metavision_core.event_io import EventsIterator
 
+from dataset_collection.event_denoise import denoise_keep_mask
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -98,64 +100,6 @@ def parse_args() -> argparse.Namespace:
         "specific recording still looks noisy at the defaults.",
     )
     return parser.parse_args()
-
-
-def _denoise_keep_mask(
-    xs: np.ndarray, ys: np.ndarray, ts: np.ndarray, last_active: np.ndarray, threshold_us: float, radius: int,
-    min_neighbors: int = 1,
-) -> np.ndarray:
-    """Spatiotemporal activity filter -- keeps an event only if at least
-    `min_neighbors` DISTINCT pixels within `radius` of it (itself included)
-    fired within `threshold_us` before it. Real motion lights up several
-    nearby pixels together in a short window; isolated noise doesn't have
-    that support and gets dropped. `last_active` is a persistent (height,
-    width) array of the last-seen event time per pixel (same units as
-    `ts`, i.e. device microseconds), carried across calls so the filter has
-    memory across the whole recording rather than resetting every delta-t
-    chunk.
-
-    min_neighbors=1 (the default) only requires ONE recently-active
-    neighbor -- confirmed on real hardware this isn't selective enough for
-    this sensor's actual noise character: tightening the time window alone
-    (20ms -> 3ms) dropped ~48% of all events with no visible reduction in
-    background noise dots, meaning isolated noise pairs pass a
-    single-neighbor test about as easily as real motion does. Raising
-    min_neighbors to 2 or 3 is a much stronger test, since real motion
-    typically lights up several pixels together, not just two.
-
-    Processes events one at a time in chronological order (required for
-    correctness: two real, temporally-close events at neighboring pixels
-    within the SAME chunk need to be able to support each other) -- fine
-    for an offline diagnostic tool on clip-length recordings; if this gets
-    too slow on very large recordings, the per-event neighborhood lookup is
-    the place to optimize (e.g. vectorize with a shifted-array approach).
-
-    IMPORTANT: `last_active` gets updated for EVERY event, kept or not --
-    not just kept ones. Caught this with a synthetic test: updating only on
-    keep meant the very FIRST event of any real motion burst had nothing to
-    find as "recently active" yet (nothing came before it either), so it
-    got dropped, never updated the grid, and the next event in the same
-    burst also found nothing -- cascading to the whole burst being dropped.
-    Updating unconditionally lets event 2 of a burst find support from
-    event 1 regardless of whether event 1 itself was classified as noise,
-    which is what actually makes a moving edge's leading events survive.
-    """
-    height, width = last_active.shape
-    keep = np.zeros(xs.shape[0], dtype=bool)
-    for i in range(xs.shape[0]):
-        xi = int(xs[i])
-        yi = int(ys[i])
-        ti = ts[i]
-        y0, y1 = max(0, yi - radius), min(height, yi + radius + 1)
-        x0, x1 = max(0, xi - radius), min(width, xi + radius + 1)
-        # Count DISTINCT recently-active pixels in the neighborhood, not
-        # total historical events there -- last_active only ever stores the
-        # latest fire time per pixel, so a single pixel repeatedly firing
-        # can't masquerade as "several neighbors" here.
-        active_count = int((last_active[y0:y1, x0:x1] >= ti - threshold_us).sum())
-        keep[i] = active_count >= min_neighbors
-        last_active[yi, xi] = ti
-    return keep
 
 
 def main() -> int:
@@ -225,7 +169,7 @@ def main() -> int:
                 evs = evs[valid_mask]
         total_before_denoise += int(evs.size)
         if denoise_enabled and evs.size > 0:
-            keep_mask = _denoise_keep_mask(
+            keep_mask = denoise_keep_mask(
                 evs["x"], evs["y"], evs["t"].astype(np.float64), last_active, args.denoise_us, args.denoise_radius,
                 min_neighbors=args.denoise_min_neighbors,
             )
