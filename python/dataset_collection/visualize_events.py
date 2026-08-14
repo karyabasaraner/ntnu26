@@ -174,7 +174,28 @@ def main() -> int:
               f"within {args.denoise_us:.0f}us (radius={args.denoise_radius}px)")
 
     total_invalid_coords = 0
-    for evs in mv_iterator:
+    stopped_early_reason = ""
+    mv_iter = iter(mv_iterator)
+    while True:
+        try:
+            evs = next(mv_iter)
+        except StopIteration:
+            break
+        except AssertionError as exc:
+            # Confirmed on real hardware: a corrupted recording can violate
+            # the SDK's own internal invariant that decoded timestamps never
+            # go backward -- events_iterator.py asserts this and raises,
+            # which used to take down the whole run and lose every valid
+            # event decoded before the corruption point too. Salvage what
+            # was already decoded instead: still render/save it, just with
+            # a clear warning that the file is corrupted from this point
+            # onward rather than trusting a silent partial result.
+            stopped_early_reason = str(exc)
+            print(f"WARNING: SDK decoder hit corrupted/out-of-order data partway through this file "
+                  f"and stopped ({stopped_early_reason}). Everything decoded before this point is "
+                  f"real and kept below; treat anything after it as lost, and re-record rather than "
+                  f"trusting this file for anything serious.")
+            break
         if evs.size > 0:
             # Confirmed on real hardware: a corrupted/flaky recording can
             # decode events with x/y outside the sensor's actual
@@ -223,6 +244,10 @@ def main() -> int:
               f"{width}x{height} resolution -- this file's recording looks corrupted/flaky "
               f"(check for 'TimeHigh discrepancy' messages above from the SDK's own decoder). "
               f"Consider re-recording rather than trusting this file.")
+    if stopped_early_reason:
+        print(f"WARNING: decode stopped EARLY due to corrupted data ({stopped_early_reason}) -- "
+              f"everything below reflects only the portion of the recording decoded before that "
+              f"point, not the full file. Re-record rather than trusting this one.")
 
     duration_s = len(chunk_counts) * args.delta_t_ms / 1000.0
     print(f"Total events: {total_events} ({total_pos} positive / {total_neg} negative)")
