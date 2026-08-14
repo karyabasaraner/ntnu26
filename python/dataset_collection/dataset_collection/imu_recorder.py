@@ -100,19 +100,44 @@ class ImuRecorder:
             # exposes the attribute (all axes share one underlying ODR
             # register on this driver, so one would suffice, but setting
             # all of them is harmless and doesn't assume that stays true).
+            #
+            # PermissionError specifically (confirmed on real hardware) is
+            # treated as non-fatal: it means the sysfs attribute exists and
+            # we're writing to the right place, but this user lacks write
+            # permission on it -- typically a missing udev rule, an
+            # environment/setup gap, not a config mistake. Warn and
+            # continue at the driver's current/default rate rather than
+            # aborting the whole recording, since the actual achieved rate
+            # is recoverable from the recorded per-sample
+            # host_timestamp_ns anyway (hardware timestamp channel,
+            # confirmed available -- see module docstring). Other OSErrors
+            # (e.g. an invalid/unsupported rate value) stay fatal, since
+            # those mean the requested rate itself was rejected, which is
+            # worth surfacing loudly rather than silently ignoring.
             set_on_any = False
+            permission_denied = False
             for channel in self._channels:
                 if "sampling_frequency" not in channel.attrs:
                     continue
                 try:
                     channel.attrs["sampling_frequency"].value = str(self._sampling_frequency)
                     set_on_any = True
+                except PermissionError:
+                    permission_denied = True
                 except OSError as exc:
                     raise RuntimeError(
                         f"Failed to set sampling_frequency={self._sampling_frequency} on "
                         f"channel '{channel.id}' of '{self._device_id}': {exc}"
                     ) from exc
-            if not set_on_any:
+            if not set_on_any and permission_denied:
+                print(
+                    f"WARNING: no permission to set sampling_frequency={self._sampling_frequency} "
+                    f"on '{self._device_id}' (likely a missing udev rule granting write access to "
+                    f"the IIO sysfs attributes) -- continuing at the driver's current/default rate "
+                    f"instead. Fix the permission if you need this specific rate; the actual "
+                    f"achieved rate is still recoverable from the recorded per-sample timestamps."
+                )
+            elif not set_on_any:
                 raise RuntimeError(
                     f"No channel on '{self._device_id}' exposes a 'sampling_frequency' "
                     f"attribute (checked: {[c.id for c in self._channels]}) -- can't set "
