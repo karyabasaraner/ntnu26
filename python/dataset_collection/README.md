@@ -162,10 +162,18 @@ process's monotonic clock (`time.monotonic_ns()`, i.e. `CLOCK_MONOTONIC`).
 - Event camera CD events: device microsecond timestamps anchored onto the
   monotonic clock at the first event batch (mirrors
   `core/modules/event_camera/prophesee_event_camera.cpp`).
-- IMU samples: read directly from the IIO driver's hardware `timestamp`
-  channel when present -- on Linux this **is** `CLOCK_MONOTONIC` already, so
-  no anchoring is needed, only a coarser host-side fallback if that channel
-  isn't exposed.
+- IMU samples: originally designed to read the IIO driver's hardware
+  `timestamp` channel (which on Linux **is** `CLOCK_MONOTONIC` already, no
+  anchoring needed) via buffered capture, mirroring the C++ core stack.
+  Confirmed on real hardware this doesn't work on this deployment -- no
+  `trigger/` interface exists on the device at all (likely the sensor's
+  interrupt line isn't wired in the device tree), so buffered capture never
+  receives data and the hardware timestamp channel is unusable outside of
+  it. `imu_recorder.py` now polls each channel's `raw` attribute directly
+  instead, using the host's own clock per sample (`timestamp_source` is
+  always `"poll"`) -- see its module docstring for the full story and the
+  real tradeoff (no hardware-precision timestamps, achieved rate bounded by
+  Python loop + sysfs overhead rather than the sensor's own clocking).
 
 ### Clock drift correction
 
