@@ -60,25 +60,31 @@ name/signature could not be confirmed and should be checked first.
   accelerometer/gyroscope IIO devices. Fixed at the kernel level; both
   channels confirmed producing live physical readings (accelerometer
   correctly reads ~1g on its vertical axis at rest).
+- `ClockAnchor`'s drift correction (see "Clock drift correction" below) --
+  confirmed on two real 2-minute, 4-camera recordings: `latency trend`
+  stayed under ~2ms/min for the full recording (vs. the hundreds of ms/min
+  the old fixed-rate approach would have accumulated at the drift
+  magnitudes Phase 3 measured), and the warm-up anchor fix measurably
+  reduced (not eliminated -- see `analyze_latency.py`'s notes) the
+  constant-offset artifact found in the first pass.
+- `event_recorder.py`'s `stream_events()` (decoded CD events, used by
+  Phase 4/5's `record_rgb_event.py`/`record.py`) -- confirmed on real
+  hardware that `metavision_core.event_io.EventsIterator` (already used to
+  decode RAW files, see `visualize_events.py`) also streams LIVE directly
+  when given a serial number as `input_path`: 3.37M events decoded over
+  5s (~675K events/sec). Implemented on that basis rather than the
+  originally-guessed `device.get_i_event_cd_decoder()` HAL path (which
+  does exist, confirmed via introspection, but wasn't needed). Not yet
+  run through a full `record_rgb_event.py`/`record.py` session on-device --
+  see NOTE(verify-on-device) in `event_recorder.py` for what's still
+  unconfirmed (mainly: whether `stop()` reliably joins the streaming
+  thread promptly on a live, ongoing stream, vs. only tested against a
+  short bounded capture so far).
 
 **Still unverified / known not to work yet:**
-- `event_recorder.py`'s `stream_events()` (decoded CD events, used by
-  Phase 4/5's `record_rgb_event.py`/`record.py`) -- same wrong-API problem
-  as raw recording had, not yet worked through against real hardware.
-  Raises `NotImplementedError` rather than crashing confusingly.
 - Bias file loading (`--bias-file`) -- `.biases().set_from_file(...)`
   doesn't exist either; likely replacement is `device.get_i_ll_biases()`,
   unconfirmed. Raises `NotImplementedError` rather than guessing.
-- `ClockAnchor`'s drift correction (see "Clock drift correction" below) --
-  the math is sanity-checked against a synthetic simulated-drift camera
-  (not real hardware): a simulated ~0.63%-fast clock with random host-
-  arrival jitter converged from a >100us fixed-rate error to single-digit-
-  microsecond accuracy within a few thousand samples, and the fitted
-  `drift_from_nominal_ppm` matched the simulation's injected drift almost
-  exactly. Re-run `record_multi_rgb.py` on-device and check
-  `summary.json`'s `clock_drift_ppm` lands in the same ballpark Phase 3
-  found (rather than near 0 or something wildly different) before trusting
-  it on a real long recording.
 
 ## Phase checkpoints
 
@@ -209,12 +215,20 @@ itself. A synthetic test with a deliberately atypical first sample showed
 about a 3.7x reduction in the resulting bias with the 16-sample warm-up vs.
 a single-sample anchor.
 
-Event cameras don't have this correction yet -- only Basler/RGB uses
-`GevTimestampTickFrequency`-style ticks today; Metavision's raw recording
-path (Phase 1) doesn't go through `ClockAnchor` at all yet since
-`stream_events()`'s decoded-CD-event path (which is what would use it) is
-still unimplemented (see `event_recorder.py`'s NOTE(verify-on-device)). Wire
-event timestamps through `ClockAnchor` the same way once that's built.
+Event camera timestamps now go through `ClockAnchor` too, via
+`stream_events()` (Phase 4/5's decoded-CD-event path) -- but only the
+origin-forced incremental rate fit, not the 16-sample warm-up anchor fix
+described above yet, since that's per-`ClockAnchor`-instance and
+`EventCameraRecorder` constructs its own with the default (single-sample)
+anchor. Also anchored once per delta_t chunk rather than per event (this
+sensor produces ~675K events/sec live -- the per-sample stateful fit
+can't run at that rate), then vectorized across the chunk using the
+current rate estimate, which trades a small amount of intra-chunk
+precision (a delta_t chunk is only ~20ms) for being fast enough to keep
+up at all. Metavision's raw recording path (Phase 1) still doesn't go
+through `ClockAnchor` at all -- it's an unmodified byte passthrough with
+no per-event timestamps decoded on our side, so there's nothing to anchor
+there by design.
 
 ## Layout
 

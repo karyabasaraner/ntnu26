@@ -24,17 +24,29 @@ down, on the HAL `Device` object (`Camera.get_device()`), via its
     So start_raw_recording() below runs a background thread pulling
     buffers for the whole recording duration, not just start()/stop().
 
+  - Decoded CD event streaming (Phase 4/5, stream_events() below):
+    `.cd().add_callback(...)` doesn't exist, as guessed originally. Confirmed
+    on-device: `device.get_i_event_cd_decoder()` DOES exist (a real
+    facility getter), but it turned out unnecessary -- `EventsIterator`
+    (`metavision_core.event_io`, already used to decode RAW files in
+    visualize_events.py) streams LIVE directly when given a serial number
+    as `input_path` instead of a file path, producing the exact same
+    decoded (x, y, p, t) structured arrays either way. Confirmed on real
+    hardware: 3.37M events decoded live over 5s (~675K events/sec). This is
+    a much smaller, more robust implementation than hand-wiring HAL
+    callbacks, so that's what stream_events() below actually uses.
+    IMPORTANT: EventsIterator opens its OWN connection to the sensor from
+    the serial string -- stream_events() must NOT also call self.open()
+    (which creates self._camera via Camera.from_serial()), or that's two
+    simultaneous connections to the same physical device, the same
+    "VIDIOC_REQBUFS ... Device or resource busy" conflict seen elsewhere
+    in this project when something else already held the camera open.
+
 NOTE(verify-on-device): still unverified --
   - Bias file loading: `.biases().set_from_file(...)` doesn't exist either;
     the replacement is presumably `device.get_i_ll_biases()`, but its exact
     method names haven't been checked. `open()` below raises a clear error
     instead of guessing, if a bias_file is actually passed.
-  - Decoded CD event streaming (`stream_events()`, used by Phase 4/5):
-    `.cd().add_callback(...)` doesn't exist either. The real path is likely
-    `device.get_i_event_cd_decoder()` plus a callback registered on that
-    decoder, fed by `get_i_events_stream()`'s buffers -- same style of fix
-    as start_raw_recording below, just not yet worked through on real
-    hardware. `stream_events()` raises a clear error instead of guessing.
 """
 from __future__ import annotations
 
@@ -43,7 +55,9 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
-from .clock import ClockAnchor
+import numpy as np
+
+from .clock import ClockAnchor, now_ns
 from .event_types import EventBatch
 
 try:
@@ -80,6 +94,14 @@ class EventCameraRecorder:
         # keep pulling for the whole recording, not just start()/stop().
         self._poll_thread: Optional[threading.Thread] = None
         self._stop_poll = threading.Event()
+        # Decoded-event streaming (Phase 4/5, stream_events() below) runs
+        # its own EventsIterator-owned live connection, entirely separate
+        # from self._camera/self._i_events_stream above -- see module
+        # docstring for why the two paths must never both be open at once.
+        self._stream_thread: Optional[threading.Thread] = None
+        self._stop_stream = threading.Event()
+        self._stream_width = 0
+        self._stream_height = 0
 
     @property
     def event_count(self) -> int:
@@ -149,34 +171,116 @@ class EventCameraRecorder:
 
     def stream_events(self, on_events: Callable[[EventBatch], None]) -> None:
         """Phase 4/5: decoded CD events, timestamped in the shared monotonic
-        clock domain (device microsecond clock anchored at the first batch),
-        for cross-modal alignment with the Basler/IMU recorders. Mirrors
-        core/modules/event_camera/prophesee_event_camera.cpp.
+        clock domain, for cross-modal alignment with the Basler/IMU
+        recorders. Mirrors core/modules/event_camera/prophesee_event_camera.cpp.
 
-        NOT YET WORKING: see module NOTE(verify-on-device). `.cd()` doesn't
-        exist on this SDK's Camera (confirmed on-device alongside the
-        start_raw_recording fix). The real path is presumably
-        device.get_i_event_cd_decoder() plus a callback fed by
-        get_i_events_stream()'s buffers, but that hasn't been worked through
-        against real hardware yet -- only Phase 1 raw recording has.
+        Confirmed on real hardware: metavision_core.event_io.EventsIterator
+        (already used to decode RAW files in visualize_events.py) streams
+        LIVE directly when given a serial number as input_path, producing
+        the same decoded (x, y, p, t) structured arrays -- see module
+        docstring. Runs the live iteration in a background thread (daemon,
+        same pattern as the raw-recording poll thread) so this call returns
+        immediately; on_events() is invoked from that thread once per
+        delta_t chunk, so keep it fast (enqueue for a writer, as
+        MultiEventRig does).
         """
-        raise NotImplementedError(
-            "stream_events() (decoded CD events, used by Phase 4/5) still "
-            "uses the same wrong API guess as the now-fixed raw recording "
-            "path -- needs the same on-device verification against "
-            "device.get_i_event_cd_decoder() before this can work. "
-            "record_event.py's raw recording (Phase 1) works; "
-            "record_rgb_event.py / record.py do not yet."
+        if self._bias_file:
+            # Same unresolved gap as open()'s raw-recording path -- see
+            # module NOTE(verify-on-device).
+            raise NotImplementedError(
+                "bias_file loading not yet verified against this SDK's "
+                "device.get_i_ll_biases() API -- rerun without --bias-file "
+                "for now."
+            )
+        if not self._serial_number:
+            # Unlike raw recording (Camera.from_first_available()), a live
+            # EventsIterator needs a concrete device to connect to -- no
+            # "first available" fallback here, and guessing wrong would
+            # silently grab the wrong physical camera in a two-event-camera
+            # setup.
+            raise ValueError(
+                "stream_events() requires an explicit serial_number (no "
+                "'first available' fallback for live decoded streaming)."
+            )
+
+        from metavision_core.event_io import EventsIterator
+
+        mv_iterator = EventsIterator(input_path=self._serial_number, delta_t=20000)
+        self._stream_height, self._stream_width = mv_iterator.get_size()
+
+        self._stop_stream.clear()
+        self._stream_thread = threading.Thread(
+            target=self._stream_loop, args=(mv_iterator, on_events), daemon=True,
         )
-        # Left unimplemented rather than guessed again: whatever replaces
-        # this needs to turn decoded (x, y, polarity, t) arrays from
-        # get_i_event_cd_decoder()'s callback into EventBatch objects via
-        # on_events(), anchoring t (device microseconds) through
-        # self._clock_anchor.to_host_ns() same as before, updating
-        # self._event_count, and setting self._running = True once the
-        # underlying get_i_events_stream() is started.
+        self._stream_thread.start()
+        self._running = True
+
+    def _stream_loop(self, mv_iterator, on_events: Callable[[EventBatch], None]) -> None:
+        mv_iter = iter(mv_iterator)
+        while not self._stop_stream.is_set():
+            try:
+                evs = next(mv_iter)
+            except StopIteration:
+                break
+            except AssertionError as exc:
+                # Confirmed on real hardware (visualize_events.py hit the
+                # identical thing decoding a corrupted RAW file): the SDK's
+                # own decoder can raise a bare AssertionError if it sees
+                # timestamps go backward. Stop this thread cleanly instead
+                # of letting the exception vanish silently in the
+                # background -- self._running flips to False either way,
+                # same signal a caller would get from a normal stop().
+                print(f"WARNING: event stream decoder hit a data inconsistency and stopped "
+                      f"({exc}). Recording ended early.")
+                break
+            if evs.size == 0:
+                continue
+
+            # Confirmed on real hardware (same issue hit in
+            # visualize_events.py): a flaky moment in the stream can
+            # produce x/y outside the sensor's actual resolution -- drop
+            # those rather than writing garbage coordinates into the
+            # dataset.
+            valid_mask = (
+                (evs["x"] >= 0) & (evs["x"] < self._stream_width)
+                & (evs["y"] >= 0) & (evs["y"] < self._stream_height)
+            )
+            if not valid_mask.all():
+                evs = evs[valid_mask]
+                if evs.size == 0:
+                    continue
+
+            # Anchor ONCE per chunk, not per event -- confirmed on real
+            # hardware this sensor produces ~675K events/sec, so calling
+            # ClockAnchor.to_host_ns()'s stateful per-sample fit for every
+            # single event would never keep up. Use the chunk's last event
+            # as the reference tick, get one drift-corrected host_ns for
+            # it, then vectorize every other event's host_ns via the
+            # CURRENT rate estimate -- accurate enough since delta_t chunks
+            # are only ~20ms, far shorter than the timescale drift
+            # correction actually cares about.
+            host_now_ns = now_ns()
+            reference_t = float(evs["t"][-1])
+            anchor_host_ns = self._clock_anchor.to_host_ns(int(round(reference_t)), host_now_ns)
+            rate = self._clock_anchor.current_rate_ns_per_tick
+            host_ts = anchor_host_ns + (evs["t"].astype(np.float64) - reference_t) * rate
+
+            batch = EventBatch(
+                x=evs["x"].copy(),
+                y=evs["y"].copy(),
+                polarity=evs["p"].copy(),
+                host_timestamp_ns=host_ts.astype(np.int64),
+            )
+            on_events(batch)
+            self._event_count += int(evs.size)
+
+        self._running = False
 
     def stop(self) -> None:
+        self._stop_stream.set()
+        if self._stream_thread is not None:
+            self._stream_thread.join(timeout=5.0)
+            self._stream_thread = None
         if self._i_events_stream is not None and self._running:
             self._i_events_stream.stop()
         self._running = False
