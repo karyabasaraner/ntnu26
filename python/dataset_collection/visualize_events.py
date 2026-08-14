@@ -19,26 +19,34 @@ actually plays back like a video of what the sensor saw, instead of
 collapsing all the timing information into one static image. This is the
 closer-to-intended way to look at event camera data.
 
-With --denoise-us, drops events with no spatially/temporally-correlated
-neighbor (a simple "activity filter") before rendering -- real motion lights
-up a neighborhood of pixels together in a short window, isolated background
-noise doesn't. Implemented directly here rather than via the SDK's own
-filtering: confirmed via live introspection on real hardware that
-metavision_sdk_cv isn't installed on this SDK build, and this GenX320's HAL
-plugin doesn't support its I_EventTrailFilterModule
-(device.get_i_event_trail_filter_module() returns None) or expose an
-activity-filter accessor at all -- so there's no SDK-level denoising path
-available on this hardware/build, hence the DIY version here. This only
-affects the visualization, not what's on disk -- it can't be applied
-retroactively to change what a HAL-level filter would (a HAL filter would
-change what gets recorded in the first place; this one just changes what
-gets drawn from an already-recorded file).
+With --denoise-us > 0 (on by default -- see defaults below), drops events
+with no spatially/temporally-correlated neighbor (a simple "activity
+filter") before rendering -- real motion lights up a neighborhood of pixels
+together in a short window, isolated background noise doesn't. Implemented
+directly here rather than via the SDK's own filtering: confirmed via live
+introspection on real hardware that metavision_sdk_cv isn't installed on
+this SDK build, and this GenX320's HAL plugin doesn't support its
+I_EventTrailFilterModule (device.get_i_event_trail_filter_module() returns
+None) or expose an activity-filter accessor at all -- so there's no
+SDK-level denoising path available on this hardware/build, hence the DIY
+version here. This only affects the visualization, not what's on disk -- it
+can't be applied retroactively to change what a HAL-level filter would (a
+HAL filter would change what gets recorded in the first place; this one
+just changes what gets drawn from an already-recorded file). Pass
+--denoise-us 0 to fall back to the raw, undenoised decode.
+
+Defaults (--delta-t-ms 45, --denoise-us 10000, --denoise-radius 10,
+--denoise-min-neighbors 1) are empirically tuned from side-by-side
+comparisons on real GenX320 recordings on this hardware -- confirmed
+better-looking than the initial guesses (20ms/radius=1) that seemed
+reasonable on paper but barely reduced visible noise in practice. Override
+any of them per-run if a specific recording needs different tuning.
 
 Usage:
-    python visualize_events.py --input output/record_event/run_5/events.raw
-    python visualize_events.py --input <path> --output my_plot.png --delta-t-ms 20
-    python visualize_events.py --input <path> --gif --delta-t-ms 20
-    python visualize_events.py --input <path> --gif --denoise-us 20000
+    python visualize_events.py --input output/record_event/run_10/events.raw
+    python visualize_events.py --input <path> --gif
+    python visualize_events.py --input <path> --gif --denoise-us 0  # raw, undenoised
+    python visualize_events.py --input <path> --gif --delta-t-ms 20 --denoise-radius 2
 
 Requires h5py (pip install h5py) for metavision_core.event_io to import,
 even though HDF5 itself isn't used here -- it's an unconditional import
@@ -62,27 +70,32 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--input", required=True, help="path to a recorded events.raw file")
     parser.add_argument("--output", default="", help="output PNG path (default: <input>.png next to the input)")
-    parser.add_argument("--delta-t-ms", type=float, default=20.0, help="chunk size in ms for reading + the rate plot's time resolution / GIF frame duration")
+    parser.add_argument("--delta-t-ms", type=float, default=45.0, help="chunk size in ms for reading + the rate plot's time resolution / GIF frame duration (default 45ms, empirically tuned on real recordings -- see module docstring)")
     parser.add_argument("--gif", action="store_true", help="also render an animated GIF (one frame per delta-t window, not accumulated)")
     parser.add_argument("--gif-output", default="", help="output GIF path (default: <input>.gif next to the input)")
     parser.add_argument(
-        "--denoise-us", type=float, default=0.0,
+        "--denoise-us", type=float, default=10000.0,
         help="drop events with no spatially/temporally-correlated neighbor within this many "
-        "microseconds (0 = disabled, the default). Try 10000-30000 (10-30ms) as a starting "
-        "point; see the module docstring for why this is a DIY filter rather than an SDK one.",
+        "microseconds (default 10000 = 10ms, on by default; pass 0 to disable and see the raw "
+        "undenoised decode). See the module docstring for why this is a DIY filter rather than "
+        "an SDK one.",
     )
     parser.add_argument(
-        "--denoise-radius", type=int, default=1,
-        help="neighborhood radius in pixels for --denoise-us (1 = 3x3 neighborhood, the default)",
+        "--denoise-radius", type=int, default=10,
+        help="neighborhood radius in pixels for --denoise-us (default 10 = 21x21 neighborhood). "
+        "Confirmed on real hardware this wide default works better than a tight radius=1-2: at "
+        "radius=1, even min_neighbors=2 struggled to visibly separate real motion from this "
+        "sensor's background noise; a much wider neighborhood at min_neighbors=1 (the default) "
+        "gave clearly better-looking results in side-by-side comparisons.",
     )
     parser.add_argument(
         "--denoise-min-neighbors", type=int, default=1,
-        help="require at least this many DISTINCT recently-active pixels in the neighborhood, "
-        "not just one (default 1 = original behavior). Confirmed on real hardware that "
-        "min_neighbors=1 isn't selective enough on this sensor's noise: tightening "
-        "--denoise-us alone dropped ~48%% of ALL events with no visible drop in background "
-        "noise, meaning single-neighbor pairs of noise are about as common as single-neighbor "
-        "real motion. Real motion lights up SEVERAL nearby pixels together; try 2 or 3 here.",
+        help="require at least this many DISTINCT recently-active pixels in the neighborhood "
+        "(default 1). Note this interacts with --denoise-radius: at a tight radius (1-2px), "
+        "min_neighbors=1 wasn't selective enough on this sensor's noise on its own; at the "
+        "wider default radius=10, min_neighbors=1 already works well since the neighborhood "
+        "itself provides enough spatial context. Raise this for stricter filtering if a "
+        "specific recording still looks noisy at the defaults.",
     )
     return parser.parse_args()
 
