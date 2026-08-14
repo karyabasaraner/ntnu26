@@ -40,22 +40,38 @@ Sensor resolution for the event video defaults to 320x320 (confirmed GenX320
 resolution on this hardware) -- override with --event-width/--event-height
 if a different sensor is ever used.
 
+Videos are written with OpenCV's 'mp4v' codec first (always works, no
+external dependency), then transcoded to H.264 via `ffmpeg` if it's on
+PATH -- confirmed on real hardware that 'mp4v' plays fine in tools like
+VLC/ffmpeg-backed players but VS Code's built-in preview (and most
+browsers) rejects it outright ("video format is not supported"), since
+those only decode H.264/VP8/VP9/AV1. OpenCV's OWN H.264 writer
+(`avc1`/`h264_v4l2m2m`, this Jetson's hardware encoder path) failed
+outright in testing ("Could not find a valid device"), so this shells out
+to `ffmpeg -c:v libx264` instead -- confirmed available on this hardware's
+ffmpeg build. If `ffmpeg` isn't found at all, falls back to keeping the
+'mp4v' file as the final output with a warning, rather than failing --
+some player will still open it, just not VS Code's inline preview.
+Pass --no-h264 to skip the transcode step entirely (keeps 'mp4v', faster).
+
 Usage:
     python visualize_dataset.py --input-dir output/record/dataset_7
     python visualize_dataset.py --input-dir output/record_multi_rgb/run_3
     python visualize_dataset.py --input-dir <path> --fps 30
     python visualize_dataset.py --input-dir <path> --denoise-us 0
+    python visualize_dataset.py --input-dir <path> --no-h264
 
 Requires opencv-python (already a dependency, used elsewhere for RGB image
 I/O) for video writing -- no new dependency beyond what this toolkit already
-needs. Videos are written with the 'mp4v' fourcc; if playback is finicky in
-a specific player, re-encode with ffmpeg (not done here to avoid adding a
-new dependency for something most players handle fine).
+needs. `ffmpeg` (for the H.264 transcode step) is optional -- everything
+still works without it, just with less broadly-playable output.
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -100,7 +116,50 @@ def parse_args() -> argparse.Namespace:
         "denoising off) -- dilating makes events survive compression AND actually be visible to "
         "the eye at normal playback size. Pass 0 to disable and write raw single-pixel events.",
     )
+    parser.add_argument(
+        "--no-h264", action="store_true",
+        help="skip the ffmpeg H.264 transcode step and keep the raw 'mp4v' output (faster, but "
+        "confirmed NOT playable in VS Code's built-in preview or most browsers -- use a real "
+        "media player like VLC to view 'mp4v' files instead).",
+    )
     return parser.parse_args()
+
+
+def _finalize_video(intermediate_path: Path, final_path: Path, use_h264: bool) -> None:
+    """Transcodes the 'mp4v' file OpenCV wrote into H.264 via ffmpeg, if
+    available and requested, then removes the intermediate. Falls back to
+    just keeping the 'mp4v' file as the final output (with a warning) if
+    ffmpeg isn't on PATH or the transcode itself fails -- confirmed on real
+    hardware that OpenCV's own H.264 writer path (avc1/h264_v4l2m2m, this
+    Jetson's hardware encoder) fails outright ("Could not find a valid
+    device"), so ffmpeg + libx264 (also confirmed available) is the actual
+    working path, not a nice-to-have.
+    """
+    if not use_h264:
+        intermediate_path.rename(final_path)
+        return
+
+    if shutil.which("ffmpeg") is None:
+        print(f"WARNING: ffmpeg not found on PATH -- keeping '{final_path.name}' as raw mp4v "
+              f"(not playable in VS Code's preview or most browsers; use VLC or a similar player).")
+        intermediate_path.rename(final_path)
+        return
+
+    result = subprocess.run(
+        [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-i", str(intermediate_path),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            str(final_path),
+        ],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0 or not final_path.exists():
+        print(f"WARNING: ffmpeg H.264 transcode failed for '{final_path.name}' "
+              f"(exit {result.returncode}: {result.stderr.strip()[-300:]}) -- keeping raw mp4v instead.")
+        intermediate_path.rename(final_path)
+        return
+    intermediate_path.unlink()
 
 
 def _compute_achieved_fps(timestamps_csv: Path, frame_count: int, fallback: float = 30.0) -> float:
@@ -119,7 +178,7 @@ def _compute_achieved_fps(timestamps_csv: Path, frame_count: int, fallback: floa
     return max(frame_count - 1, 1) / duration_s
 
 
-def render_rgb_video(camera_dir: Path, output_path: Path, fps_override: float) -> Optional[dict]:
+def render_rgb_video(camera_dir: Path, output_path: Path, fps_override: float, use_h264: bool) -> Optional[dict]:
     images_dir = camera_dir / "images"
     if not images_dir.is_dir():
         return None
@@ -135,8 +194,9 @@ def render_rgb_video(camera_dir: Path, output_path: Path, fps_override: float) -
 
     fps = fps_override if fps_override > 0 else _compute_achieved_fps(camera_dir / "timestamps.csv", len(frame_paths))
 
+    intermediate_path = output_path.with_suffix(".mp4v.tmp.mp4")
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+    writer = cv2.VideoWriter(str(intermediate_path), fourcc, fps, (width, height))
     written = 0
     for frame_path in frame_paths:
         # PNGs were saved via cv2.imwrite(..., cv2.cvtColor(rgb, COLOR_RGB2BGR))
@@ -150,6 +210,7 @@ def render_rgb_video(camera_dir: Path, output_path: Path, fps_override: float) -
         writer.write(frame)
         written += 1
     writer.release()
+    _finalize_video(intermediate_path, output_path, use_h264)
     return {"frames": written, "fps": fps, "width": width, "height": height}
 
 
@@ -194,9 +255,10 @@ def render_event_video(event_dir: Path, output_path: Path, args: argparse.Namesp
     if denoise_enabled:
         last_active = np.full((height, width), -1e15, dtype=np.float64)
 
+    intermediate_path = output_path.with_suffix(".mp4v.tmp.mp4")
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     video_fps = 1000.0 / args.event_delta_t_ms
-    writer = cv2.VideoWriter(str(output_path), fourcc, video_fps, (width, height))
+    writer = cv2.VideoWriter(str(intermediate_path), fourcc, video_fps, (width, height))
     dilate_kernel = (
         np.ones((2 * args.event_dot_radius + 1, 2 * args.event_dot_radius + 1), dtype=np.uint8)
         if args.event_dot_radius > 0 else None
@@ -239,6 +301,7 @@ def render_event_video(event_dir: Path, output_path: Path, args: argparse.Namesp
             frame = cv2.dilate(frame, dilate_kernel)
         writer.write(frame)
     writer.release()
+    _finalize_video(intermediate_path, output_path, not args.no_h264)
 
     return {
         "total_events": int(records.size),
@@ -310,7 +373,7 @@ def main() -> int:
         if not camera_dir.is_dir():
             continue
         output_path = output_dir / f"{name}.mp4"
-        info = render_rgb_video(camera_dir, output_path, args.fps)
+        info = render_rgb_video(camera_dir, output_path, args.fps, not args.no_h264)
         if info is None:
             print(f"{name}: no images found, skipped")
             continue
